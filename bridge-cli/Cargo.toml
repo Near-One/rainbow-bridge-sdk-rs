@@ -9,5 +9,7 @@ dotenv.workspace = true
 tokio.workspace = true
 ethers-core.workspace = true
 near-primitives.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 nep141-connector = { path = "../bridge-sdk/connectors/nep141-connector" }
 eth-connector = { path = "../bridge-sdk/connectors/eth-connector" }

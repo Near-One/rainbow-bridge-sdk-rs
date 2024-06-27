@@ -521,6 +521,8 @@ dependencies = [
  "ethers-core",
  "near-primitives",
  "nep141-connector",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

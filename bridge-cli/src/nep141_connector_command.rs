@@ -1,9 +1,8 @@
+use crate::{combined_config, CliConfig, Network};
 use clap::Subcommand;
 use ethers_core::types::TxHash;
 use nep141_connector::{Nep141Connector, Nep141ConnectorBuilder};
 use std::str::FromStr;
-
-use crate::{default_config, env_config, CliConfig, Network};
 
 #[derive(Subcommand, Debug)]
 pub enum Nep141ConnectorSubCommand {
@@ -147,8 +146,7 @@ pub async fn match_subcommand(cmd: Nep141ConnectorSubCommand, network: Network) 
 }
 
 fn nep141_connector(network: Network, cli_config: CliConfig) -> Nep141Connector {
-    // TODO: replace unwrap
-    let combined_config = cli_config.or(env_config()).or(default_config(network));
+    let combined_config = combined_config(cli_config, network);
 
     Nep141ConnectorBuilder::default()
         .eth_endpoint(combined_config.eth_rpc)

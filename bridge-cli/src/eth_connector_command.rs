@@ -1,10 +1,9 @@
+use crate::{combined_config, CliConfig, Network};
 use clap::Subcommand;
 use eth_connector::{EthConnector, EthConnectorBuilder};
 use ethers_core::types::{Address, TxHash};
 use near_primitives::hash::CryptoHash;
 use std::str::FromStr;
-
-use crate::{default_config, env_config, CliConfig, Network};
 
 #[derive(Subcommand, Debug)]
 pub enum EthConnectorSubCommand {
@@ -114,7 +113,7 @@ pub async fn match_subcommand(cmd: EthConnectorSubCommand, network: Network) {
 }
 
 fn eth_connector(network: Network, cli_config: CliConfig) -> EthConnector {
-    let combined_config = cli_config.or(env_config()).or(default_config(network));
+    let combined_config = combined_config(cli_config, network);
 
     EthConnectorBuilder::default()
         .eth_endpoint(combined_config.eth_rpc)

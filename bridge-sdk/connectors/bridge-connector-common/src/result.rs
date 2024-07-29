@@ -23,8 +23,36 @@ pub enum BridgeSdkError {
     EthProofError(String),
     #[error("Error creating Near proof: {0}")]
     NearProofError(String),
+    #[error("{0}")]
+    DataError(#[source] DataError),
     #[error("Unexpected error occured")]
     UnknownError,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("{0}")]
+pub enum DataError {
+    BorshError(#[source] borsh::io::Error),
+    JsonError(#[source] serde_json::Error),
+    Utf8Error(#[source] std::string::FromUtf8Error),
+}
+
+impl From<serde_json::Error> for BridgeSdkError {
+    fn from(error: serde_json::Error) -> Self {
+        BridgeSdkError::DataError(DataError::JsonError(error))
+    }
+}
+
+impl From<borsh::io::Error> for BridgeSdkError {
+    fn from(error: borsh::io::Error) -> Self {
+        BridgeSdkError::DataError(DataError::BorshError(error))
+    }
+}
+
+impl From<std::string::FromUtf8Error> for BridgeSdkError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        BridgeSdkError::DataError(DataError::Utf8Error(error))
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

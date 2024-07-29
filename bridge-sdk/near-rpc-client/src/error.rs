@@ -15,6 +15,8 @@ pub enum NearRpcError {
     RpcLightClientProofError(#[from] JsonRpcError<RpcLightClientProofError>),
     RpcBlockError(#[from] JsonRpcError<RpcBlockError>),
     RpcTransactionError(#[from] JsonRpcError<RpcTransactionError>),
+    #[error("Unexpected RPC response")]
+    ResultError,
     #[error("Could not retrieve nonce for account")]
     NonceError,
     #[error("Could not confirm that transaction was finalized")]

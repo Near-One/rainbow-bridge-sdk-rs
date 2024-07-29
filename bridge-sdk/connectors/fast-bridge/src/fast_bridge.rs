@@ -5,7 +5,9 @@ use derive_builder::Builder;
 use ethers::prelude::*;
 use near_crypto::SecretKey;
 use near_primitives::{hash::CryptoHash, types::AccountId};
+use serde_json::json;
 use std::{str::FromStr, sync::Arc};
+use crate::{types::*, utils::get_fast_bridge_transfer_storage_key};
 
 abigen!(
     FastBridgeContract,
@@ -14,41 +16,15 @@ abigen!(
     ]"#
 );
 
-#[derive(BorshSerialize, Debug, Clone, Copy, PartialEq)]
-pub struct EthAddress(pub [u8; 20]);
-
-#[derive(BorshSerialize, Debug, Clone, PartialEq)]
-pub struct TransferDataEthereum {
-    pub token_near: AccountId,
-    pub token_eth: EthAddress,
-    pub amount: u128,
-}
-
-#[derive(BorshSerialize, Debug, Clone, PartialEq)]
-pub struct TransferDataNear {
-    pub token: AccountId,
-    pub amount: u128,
-}
-
-#[derive(BorshSerialize, Debug, Clone, PartialEq)]
-pub struct TransferMessage {
-    pub valid_till: u64,
-    pub transfer: TransferDataEthereum,
-    pub fee: TransferDataNear,
-    pub recipient: EthAddress,
-    pub valid_till_block_height: Option<u64>,
-    pub aurora_sender: Option<EthAddress>,
-}
-
 #[derive(Builder)]
 pub struct FastBridge {
-    #[doc = r"Ethereum RPC endpoint. Required for `transfer_on_eth`, `lp_unlock`"]
+    #[doc = r"Ethereum RPC endpoint. Required for `complete_transfer_on_eth`, `lp_unlock`"]
     eth_endpoint: Option<String>,
-    #[doc = r"Ethereum chain id. Required for `transfer_on_eth`, `lp_unlock`"]
+    #[doc = r"Ethereum chain id. Required for `complete_transfer_on_eth`, `lp_unlock`"]
     eth_chain_id: Option<u64>,
-    #[doc = r"Ethereum private key. Required for `transfer_on_eth`"]
+    #[doc = r"Ethereum private key. Required for `complete_transfer_on_eth`"]
     eth_private_key: Option<String>,
-    #[doc = r"NEAR RPC endpoint. Required for `transfer`, `lp_unlock`, `withdraw`"]
+    #[doc = r"NEAR RPC endpoint. Required for `transfer`, `complete_transfer_on_eth`, `lp_unlock`, `withdraw`"]
     near_endpoint: Option<String>,
     #[doc = r"NEAR private key. Required for `transfer`, `lp_unlock`, `withdraw`"]
     near_private_key: Option<String>,
@@ -56,7 +32,7 @@ pub struct FastBridge {
     near_signer: Option<String>,
     #[doc = r"Fast Bridge account id on Near. Required for `transfer`, `lp_unlock`, `withdraw`"]
     fast_bridge_account_id: Option<String>,
-    #[doc = r"Fast bridge address on Ethereum. Required for `transfer_on_eth`"]
+    #[doc = r"Fast bridge address on Ethereum. Required for `complete_transfer_on_eth`"]
     fast_bridge_address: Option<String>,
 }
 
@@ -79,22 +55,20 @@ impl FastBridge {
             valid_till,
             transfer: TransferDataEthereum {
                 token_near: token_id.clone(),
-                token_eth: EthAddress(eth_token_address.0),
-                amount,
+                token_eth: eth_token_address.into(),
+                amount: NearU128(amount),
             },
             fee: TransferDataNear {
                 token: token_id.clone(),
-                amount: fee_amount,
+                amount: NearU128(fee_amount),
             },
-            recipient: EthAddress(recipient.0),
+            recipient: recipient.into(),
             valid_till_block_height: None,
             aurora_sender: None,
         };
 
         let mut buffer: Vec<u8> = Vec::new();
-        message
-            .serialize(&mut buffer)
-            .map_err(|_| BridgeSdkError::UnknownError)?;
+        message.serialize(&mut buffer)?;
         let msg = BASE64_STANDARD.encode(&buffer);
 
         let args = format!(
@@ -126,22 +100,36 @@ impl FastBridge {
     #[tracing::instrument(skip_all, name = "TRANSFER ON ETH")]
     pub async fn complete_transfer_on_eth(
         &self,
-        token: Address,
-        recipient: Address,
         nonce: U256,
-        amount: U256,
         unlock_recipient: String,
-        valid_till_block_height: U256,
     ) -> Result<TxHash> {
         let fast_bridge = self.fast_bridge_contract()?;
+        let near_endpoint = self.near_endpoint()?;
+
+        let response = near_rpc_client::view(
+            near_endpoint,
+            AccountId::from_str(self.fast_bridge_account_id()?)
+                .map_err(|_| BridgeSdkError::ConfigError("Invalid fast bridge account id".to_string()))?,
+            "get_pending_transfer".to_string(),
+            json!({
+                "id": nonce.to_string(),
+            })
+        ).await?;
+
+        let json = String::from_utf8(response)?;
+        let pending_transfer: (AccountId, TransferMessage) = serde_json::from_str(&json)?;
+
+        let amount = pending_transfer.1.transfer.amount.0.into();
         let transfer_call = fast_bridge
             .transfer_tokens(
-                token,
-                recipient,
+                pending_transfer.1.transfer.token_eth.into(),
+                pending_transfer.1.recipient.into(),
                 nonce,
                 amount,
                 unlock_recipient,
-                valid_till_block_height,
+                pending_transfer.1.valid_till_block_height
+                    .ok_or(BridgeSdkError::UnknownError)?
+                    .into(),
             )
             .value(amount);
 
@@ -161,9 +149,9 @@ impl FastBridge {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        let proof = eth_proof::get_proof_for_event(tx_hash, log_index, eth_endpoint).await?;
+        let proof = eth_proof::get_event_proof(tx_hash, log_index, eth_endpoint).await?;
 
-        let serialized_proof = serde_json::to_string(&proof).unwrap();
+        let serialized_proof = serde_json::to_string(&proof)?;
         let args = format!(r#"{{"proof":{serialized_proof}}}"#)
             .to_string()
             .into_bytes();
@@ -184,6 +172,63 @@ impl FastBridge {
         tracing::info!(
             tx_hash = format!("{:?}", tx_hash),
             "Sent lp unlock transaction"
+        );
+
+        Ok(tx_hash)
+    }
+
+    pub async fn unlock(&self, nonce: u64) -> Result<CryptoHash> {
+        let eth_endpoint = self.eth_endpoint()?;
+        let near_endpoint = self.near_endpoint()?;
+
+        let response = near_rpc_client::view(
+            near_endpoint,
+            AccountId::from_str(self.fast_bridge_account_id()?)
+                .map_err(|_| BridgeSdkError::ConfigError("Invalid fast bridge account id".to_string()))?,
+            "get_pending_transfer".to_string(),
+            json!({
+                "id": nonce.to_string(),
+            })
+        ).await?;
+
+        let json = String::from_utf8(response)?;
+        let pending_transfer: (AccountId, TransferMessage) = serde_json::from_str(&json)?;
+
+        let slot_to_prove = get_fast_bridge_transfer_storage_key(
+            pending_transfer.1.transfer.token_eth,
+            pending_transfer.1.recipient,
+            U256::from(nonce),
+            U256::from(pending_transfer.1.transfer.amount.0),
+        );
+        
+        let proof = eth_proof::get_storage_proof(
+            self.fast_bridge_address()?,
+            H256(slot_to_prove),
+            pending_transfer.1.valid_till_block_height
+                .ok_or(BridgeSdkError::UnknownError)?,
+            eth_endpoint,
+        ).await?;
+
+        let mut buffer: Vec<u8> = Vec::new();
+        proof.serialize(&mut buffer)?;
+        let proof = BASE64_STANDARD.encode(&buffer);
+
+        let tx_hash = near_rpc_client::change(
+            near_endpoint,
+            self.near_signer()?,
+            self.fast_bridge_account_id()?.to_owned(),
+            "unlock".to_owned(),
+            json!({
+                "nonce": nonce.to_string(),
+                "proof": proof,
+            }).to_string().into_bytes(),
+            300_000_000_000_000,
+            0
+        ).await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent unlock transaction"
         );
 
         Ok(tx_hash)

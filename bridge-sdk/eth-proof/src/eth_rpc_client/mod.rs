@@ -1,8 +1,8 @@
 use ::serde::Deserialize;
-use ethereum_types::{H256, U64};
+use ethereum_types::{Address, H256, U64};
 use reqwest::Client;
 use serde_json::{json, Value};
-use types::{BlockHeader, TransactionReceipt};
+use types::{BlockHeader, StorageProof, TransactionReceipt};
 
 mod serde;
 pub mod types;
@@ -104,5 +104,32 @@ impl EthRPCClient {
         let receipts = Vec::<TransactionReceipt>::deserialize(&val["result"])?;
 
         Ok(receipts)
+    }
+
+    pub async fn get_proof(
+        &self,
+        address: Address,
+        storage_key: H256,
+        block_number: U64,
+    ) -> Result<StorageProof, EthClientError> {
+        let json_value = json!({
+            "id": 1,
+            "jsonrpc": "2.0",
+            "method": "eth_getProof",
+            "params": [format!("{address:#x}"), [storage_key], format!("0x{:x}", block_number)]
+        });
+
+        let res = self.client
+            .post(&self.endpoint_url)
+            .json(&json_value)
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        let val: Value = serde_json::from_str(&res)?;
+        let proof = StorageProof::deserialize(&val["result"])?;
+
+        Ok(proof)
     }
 }

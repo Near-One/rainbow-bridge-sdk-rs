@@ -1,4 +1,4 @@
-use ethereum_types::{Address, Bloom, H256, U128, U64};
+use ethereum_types::{Address, Bloom, H256, U128, U256, U64};
 use rlp::{Encodable, RlpStream};
 use serde::Deserialize;
 
@@ -65,4 +65,24 @@ pub struct TransactionReceipt {
     pub logs_bloom: Bloom,
     pub logs: Vec<Log>,
     pub status: U8,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageEntryProof {
+    pub key: H256,
+    pub value: Bytes,
+    pub proof: Vec<Bytes>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageProof {
+    pub address: Address,
+    pub balance: U256,
+    pub nonce: U64,
+    pub storage_hash: H256,
+    pub code_hash: H256,
+    pub storage_proof: Vec<StorageEntryProof>,
+    pub account_proof: Vec<Bytes>,
 }

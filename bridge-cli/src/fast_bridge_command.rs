@@ -25,17 +25,9 @@ pub enum FastBridgeSubCommand {
     },
     CompleteTransferOnEth {
         #[clap(short, long)]
-        token: String,
-        #[clap(short, long)]
-        amount: u128,
-        #[clap(short, long)]
-        recipient: String,
-        #[clap(short, long)]
         nonce: u128,
         #[clap(short, long)]
         unlock_recipient: String,
-        #[clap(short, long)]
-        valid_till_block_height: u128,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -52,6 +44,12 @@ pub enum FastBridgeSubCommand {
         token: String,
         #[clap(short, long)]
         recipient: Option<String>,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    Unlock {
+        #[clap(short, long)]
+        nonce: u64,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -92,22 +90,14 @@ pub async fn match_subcommand(cmd: FastBridgeSubCommand, network: Network) {
                 .unwrap();
         }
         FastBridgeSubCommand::CompleteTransferOnEth {
-            token,
-            amount,
-            recipient,
             nonce,
             unlock_recipient,
-            valid_till_block_height,
             config_cli,
         } => {
             fast_bridge(network, config_cli)
                 .complete_transfer_on_eth(
-                    Address::from_str(&token).expect("Invalid token"),
-                    Address::from_str(&recipient).expect("Invalid recipient"),
                     nonce.into(),
-                    amount.into(),
                     unlock_recipient,
-                    valid_till_block_height.into(),
                 )
                 .await
                 .unwrap();
@@ -139,6 +129,12 @@ pub async fn match_subcommand(cmd: FastBridgeSubCommand, network: Network) {
                     }),
                     None,
                 )
+                .await
+                .unwrap();
+        }
+        FastBridgeSubCommand::Unlock { nonce, config_cli } => {
+            fast_bridge(network, config_cli)
+                .unlock(nonce)
                 .await
                 .unwrap();
         }

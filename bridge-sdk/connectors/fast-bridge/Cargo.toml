@@ -13,6 +13,8 @@ ethers.workspace = true
 base64.workspace = true
 hex.workspace = true
 serde_json.workspace = true
+serde.workspace = true
+tiny-keccak.workspace = true
 eth-proof = { path = "../../eth-proof" }
 bridge-connector-common = { path = "../bridge-connector-common" }
 near-rpc-client = { path = "../../near-rpc-client" }

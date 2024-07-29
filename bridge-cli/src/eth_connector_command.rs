@@ -41,7 +41,7 @@ pub enum EthConnectorSubCommand {
     },
     FinalizeWithdraw {
         #[clap(short, long)]
-        reciept_id: String,
+        receipt_id: String,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -96,11 +96,11 @@ pub async fn match_subcommand(cmd: EthConnectorSubCommand, network: Network) {
                 .unwrap();
         }
         EthConnectorSubCommand::FinalizeWithdraw {
-            reciept_id,
+            receipt_id,
             config_cli,
         } => {
             eth_connector(network, config_cli)
-                .finalize_withdraw(CryptoHash::from_str(&reciept_id).expect("Invalid receipt_id"))
+                .finalize_withdraw(CryptoHash::from_str(&receipt_id).expect("Invalid receipt_id"))
                 .await
                 .unwrap();
         }

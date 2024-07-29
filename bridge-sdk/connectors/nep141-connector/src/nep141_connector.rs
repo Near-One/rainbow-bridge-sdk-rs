@@ -118,7 +118,10 @@ impl Nep141Connector {
         )
         .await?;
 
-        tracing::info!(tx_hash = tx_id.to_string(), "Sent storage deposit transaction");
+        tracing::info!(
+            tx_hash = tx_id.to_string(),
+            "Sent storage deposit transaction"
+        );
 
         Ok(tx_id)
     }
@@ -164,7 +167,10 @@ impl Nep141Connector {
 
         let tx = call.send().await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx.tx_hash()), "Sent token deploy transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent token deploy transaction"
+        );
 
         Ok(tx.tx_hash())
     }
@@ -197,7 +203,10 @@ impl Nep141Connector {
         )
         .await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx_hash), "Sent deposit transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent deposit transaction"
+        );
 
         Ok(tx_hash)
     }
@@ -235,15 +244,18 @@ impl Nep141Connector {
 
         let mut buffer: Vec<u8> = Vec::new();
         proof_data.serialize(&mut buffer).map_err(|_| {
-            BridgeSdkError::NearProofError("Falied to deserialize proof".to_string())
+            BridgeSdkError::NearProofError("Failed to deserialize proof".to_string())
         })?;
 
         let factory = self.bridge_token_factory()?;
         let call = factory.deposit(buffer.into(), proof_block_height);
         let tx = call.send().await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx.tx_hash()), "Sent finalize deposit transaction");
-        
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent finalize deposit transaction"
+        );
+
         Ok(tx.tx_hash())
     }
 
@@ -262,7 +274,10 @@ impl Nep141Connector {
             .call()
             .await?;
 
-        tracing::debug!(address = format!("{:?}", erc20_address), "Retrieved ERC20 address");
+        tracing::debug!(
+            address = format!("{:?}", erc20_address),
+            "Retrieved ERC20 address"
+        );
 
         let bridge_token = &self.bridge_token(erc20_address)?;
 
@@ -281,14 +296,17 @@ impl Nep141Connector {
                 .await?
                 .await
                 .map_err(|e| ContractError::from(e))?;
-            
+
             tracing::debug!("Approved tokens for spending");
         }
 
         let withdraw_call = factory.withdraw(near_token_id, amount, receiver);
         let tx = withdraw_call.send().await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx.tx_hash()), "Sent withdraw transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent withdraw transaction"
+        );
 
         Ok(tx.tx_hash())
     }
@@ -299,7 +317,7 @@ impl Nep141Connector {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        let proof = eth_proof::get_proof_for_event(tx_hash, log_index, eth_endpoint).await?;
+        let proof = eth_proof::get_event_proof(tx_hash, log_index, eth_endpoint).await?;
 
         let mut args = Vec::new();
         proof
@@ -319,7 +337,10 @@ impl Nep141Connector {
         )
         .await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx_hash), "Sent finalize withdraw transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent finalize withdraw transaction"
+        );
 
         Ok(tx_hash)
     }

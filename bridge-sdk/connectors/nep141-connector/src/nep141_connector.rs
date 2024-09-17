@@ -409,9 +409,9 @@ impl Nep141Connector {
     #[tracing::instrument(skip_all, name = "SIGN TRANSFER")]
     pub async fn sign_transfer(
         &self,
-        origin_nonce: U128,
+        origin_nonce: u128,
         fee_recepient: Option<AccountId>,
-        fee: u64,
+        fee: u128,
     ) -> Result<FinalExecutionOutcomeView> {
         let near_endpoint = self.near_endpoint()?;
 

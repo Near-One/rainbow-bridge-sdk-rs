@@ -252,6 +252,33 @@ impl Nep141Connector {
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
     ) -> Result<TxHash> {
+        let transfer_log = self.extract_omni_transfer_log(transaction_hash, sender_id).await?;
+
+        self.finalize_deposit_omni_with_log(
+            serde_json::from_str(transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+        )
+        .await
+    }
+
+    #[tracing::instrument(skip_all, name = "FINALIZE DEPOSIT OMNI")]
+    pub async fn new_bridge_token_omni(
+        &self,
+        transaction_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+    ) -> Result<TxHash> {
+        let transfer_log = self.extract_omni_transfer_log(transaction_hash, sender_id).await?;
+
+        self.new_bridge_token_omni_with_log(
+            serde_json::from_str(transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+        )
+            .await
+    }
+
+    async fn extract_omni_transfer_log(
+        &self,
+        transaction_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+    ) -> Result<&String> {
         let near_endpoint = self.near_endpoint()?;
 
         let sender_id = sender_id.unwrap_or(self.near_account_id()?);
@@ -261,7 +288,7 @@ impl Nep141Connector {
             near_endpoint,
             30,
         )
-        .await?;
+            .await?;
 
         let transfer_log = &sign_tx
             .receipts_outcome
@@ -274,10 +301,46 @@ impl Nep141Connector {
             .outcome
             .logs[0];
 
-        self.finalize_deposit_omni_with_log(
-            serde_json::from_str(transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-        )
-        .await
+        Ok(transfer_log)
+    }
+
+    #[tracing::instrument(skip_all, name = "FINALIZE DEPOSIT OMNI WITH LOG")]
+    pub async fn new_bridge_token_omni_with_log(
+        &self,
+        transfer_log: Nep141LockerEvent,
+    ) -> Result<TxHash> {
+        let factory = self.bridge_token_factory()?;
+
+        let Nep141LockerEvent::SignTransferEvent {
+            message_payload,
+            signature,
+        } = transfer_log
+            else {
+                return Err(BridgeSdkError::UnknownError);
+            };
+
+        let bridge_deposit = BridgeDeposit {
+            nonce: message_payload.nonce.into(),
+            token: message_payload.token.to_string(),
+            amount: message_payload.amount.into(),
+            recipient: match message_payload.recipient {
+                OmniAddress::Eth(addr) => H160(addr.0),
+                _ => return Err(BridgeSdkError::UnknownError),
+            },
+            fee_recipient: message_payload
+                .fee_recipient
+                .map_or_else(String::new, |addr| addr.to_string()),
+        };
+
+        let call = factory.deposit_omni(signature.to_bytes().into(), bridge_deposit);
+        let tx = call.send().await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent finalize deposit transaction"
+        );
+
+        Ok(tx.tx_hash())
     }
 
     #[tracing::instrument(skip_all, name = "FINALIZE DEPOSIT OMNI WITH LOG")]

@@ -9,7 +9,11 @@ use near_primitives::{
     types::{AccountId, TransactionOrReceiptId},
     views::FinalExecutionOutcomeView,
 };
-use omni_types::{locker_args::ClaimFeeArgs, near_events::Nep141LockerEvent, OmniAddress};
+use omni_types::{
+    locker_args::{ClaimFeeArgs, FinTransferArgs},
+    near_events::Nep141LockerEvent,
+    OmniAddress,
+};
 use std::{str::FromStr, sync::Arc};
 
 abigen!(
@@ -369,6 +373,34 @@ impl Nep141Connector {
         );
 
         Ok(tx.tx_hash())
+    }
+
+    /// Withdraws NEP-141 tokens from the token locker. Requires a proof from the burn transaction
+    #[tracing::instrument(skip_all, name = "FINALIZE WITHDRAW OMNI")]
+    pub async fn finalize_withdraw_omni(&self, args: FinTransferArgs) -> Result<CryptoHash> {
+        let near_endpoint = self.near_endpoint()?;
+
+        let mut serialized_args = Vec::new();
+        args.serialize(&mut serialized_args)
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let tx_hash = near_rpc_client::change(
+            near_endpoint,
+            self.near_signer()?,
+            self.token_locker_id()?.to_string(),
+            "fin_transfer".to_string(),
+            serialized_args,
+            300_000_000_000_000,
+            60_000_000_000_000_000_000_000,
+        )
+        .await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent finalize withdraw transaction"
+        );
+
+        Ok(tx_hash)
     }
 
     /// Withdraws NEP-141 tokens from the token locker. Requires a proof from the burn transaction on Ethereum

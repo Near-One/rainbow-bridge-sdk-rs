@@ -279,7 +279,9 @@ impl Nep141Connector {
             decimals: metadata_payload.decimals
         };
 
-        let call = factory.new_bridge_token(signature.to_bytes().into(), payload);
+        let sign_ser = signature.to_bytes();
+        assert!(sign_ser.len() == 65);
+        let call = factory.new_bridge_token(sign_ser.into(), payload).gas(500_000);
         let tx = call.send().await?;
 
         tracing::info!(

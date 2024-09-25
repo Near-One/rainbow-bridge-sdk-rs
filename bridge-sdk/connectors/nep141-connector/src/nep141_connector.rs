@@ -247,7 +247,7 @@ impl Nep141Connector {
             .receipts_outcome
             .iter()
             .find(|receipt| {
-                receipt.outcome.logs.len() > 1
+                receipt.outcome.logs.len() > 0
                     && receipt.outcome.logs[0].contains(event_name)
             })
             .ok_or(BridgeSdkError::UnknownError)?

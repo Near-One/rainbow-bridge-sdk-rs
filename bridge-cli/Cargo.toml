@@ -15,4 +15,5 @@ tracing-subscriber.workspace = true
 tracing.workspace = true
 nep141-connector = { path = "../bridge-sdk/connectors/nep141-connector" }
 eth-connector = { path = "../bridge-sdk/connectors/eth-connector" }
+omni-connector = { path = "../bridge-sdk/connectors/omni-connector" }
 fast-bridge = { path = "../bridge-sdk/connectors/fast-bridge" }

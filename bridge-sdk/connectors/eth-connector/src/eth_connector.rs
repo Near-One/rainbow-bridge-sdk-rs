@@ -62,7 +62,10 @@ impl EthConnector {
 
         let tx = call.send().await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx.tx_hash()), "Sent deposit transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent deposit transaction"
+        );
 
         Ok(tx.tx_hash())
     }
@@ -77,7 +80,10 @@ impl EthConnector {
 
         let tx = call.send().await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx.tx_hash()), "Sent deposit transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent deposit transaction"
+        );
 
         Ok(tx.tx_hash())
     }
@@ -108,7 +114,10 @@ impl EthConnector {
         )
         .await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx_hash), "Sent finalize deposit transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent finalize deposit transaction"
+        );
 
         Ok(tx_hash)
     }
@@ -139,8 +148,10 @@ impl EthConnector {
         )
         .await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx_hash), "Sent withdraw transaction");
-
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent withdraw transaction"
+        );
 
         Ok(tx_hash)
     }
@@ -186,7 +197,10 @@ impl EthConnector {
         let call = eth_custodian.withdraw(buffer.into(), proof_block_height);
         let tx = call.send().await?;
 
-        tracing::info!(tx_hash = format!("{:?}", tx.tx_hash()), "Sent finalize withdraw transaction");
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent finalize withdraw transaction"
+        );
 
         Ok(tx.tx_hash())
     }

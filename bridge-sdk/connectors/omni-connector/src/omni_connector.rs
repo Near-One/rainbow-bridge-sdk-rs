@@ -18,11 +18,12 @@ use std::{str::FromStr, sync::Arc};
 abigen!(
     BridgeTokenFactory,
     r#"[
-      struct BridgeDeposit { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
-      function deployToken(bytes memory proofData, uint64 proofBlockHeight) external returns (address)
-      function finTransfer(bytes calldata, BridgeDeposit calldata) external
-      function initTransfer(string memory token, uint128 amount, string memory recipient) external
-      function nearToEthToken(string calldata nearTokenId) external view returns (address)
+      struct MetadataPayload { string token; string name; string symbol; uint8 decimals; }
+      struct FinTransferPayload { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
+      function deployToken(bytes signatureData, MetadataPayload metadata) external returns (address)
+      function finTransfer(bytes, FinTransferPayload) external
+      function initTransfer(string token, uint128 amount, uint128 fee, string memory recipient) external
+      function nearToEthToken(string nearTokenId) external view returns (address)
     ]"#
 );
 
@@ -211,7 +212,7 @@ impl OmniConnector {
             return Err(BridgeSdkError::UnknownError);
         };
 
-        let bridge_deposit = BridgeDeposit {
+        let bridge_deposit = FinTransferPayload {
             nonce: message_payload.nonce.into(),
             token: message_payload.token.to_string(),
             amount: message_payload.amount.into(),
@@ -276,7 +277,7 @@ impl OmniConnector {
             tracing::debug!("Approved tokens for spending");
         }
 
-        let withdraw_call = factory.init_transfer(near_token_id, amount, receiver);
+        let withdraw_call = factory.init_transfer(near_token_id, amount, 0, receiver);
         let tx = withdraw_call.send().await?;
 
         tracing::info!(

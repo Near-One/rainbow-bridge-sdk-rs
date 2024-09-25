@@ -15,8 +15,9 @@ use std::{str::FromStr, sync::Arc};
 abigen!(
     BridgeTokenFactory,
     r#"[
+      struct MetadataPayload { string token; string name; string symbol; uint8 decimals; }
       struct BridgeDeposit { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
-      function newBridgeToken(bytes memory proofData, uint64 proofBlockHeight) external returns (address)
+      function newBridgeToken(bytes calldata signatureData, MetadataPayload calldata metadata) payable external returns (address)
       function deposit(bytes memory proofData, uint64 proofBlockHeight) external
       function withdraw(string memory token, uint128 amount, string memory recipient) external
       function nearToEthToken(string calldata nearTokenId) external view returns (address)
@@ -115,55 +116,6 @@ impl Nep141Connector {
         Ok(tx_id)
     }
 
-    /// Deploys an ERC-20 token that will be used when bridging NEP-141 tokens to Ethereum. Requires a receipt from log_metadata transaction on Near
-    #[tracing::instrument(skip_all, name = "DEPLOY TOKEN")]
-    pub async fn deploy_token(&self, receipt_id: CryptoHash) -> Result<TxHash> {
-        let eth_endpoint = self.eth_endpoint()?;
-        let near_endpoint = self.near_endpoint()?;
-
-        let near_on_eth_client =
-            NearOnEthClient::new(self.near_light_client_address()?, eth_endpoint.to_string());
-
-        let proof_block_height = near_on_eth_client.get_sync_height().await?;
-        let block_hash = near_on_eth_client
-            .get_block_hash(proof_block_height)
-            .await?;
-
-        tracing::debug!(proof_block_height, "Retrieved light client block height");
-
-        let receipt_id = TransactionOrReceiptId::Receipt {
-            receipt_id,
-            receiver_id: AccountId::from_str(self.token_locker_id()?)
-                .map_err(|_| BridgeSdkError::UnknownError)?,
-        };
-
-        let proof_data = near_rpc_client::get_light_client_proof(
-            near_endpoint,
-            receipt_id,
-            CryptoHash(block_hash),
-        )
-        .await?;
-
-        let mut buffer: Vec<u8> = Vec::new();
-        proof_data.serialize(&mut buffer).map_err(|_| {
-            BridgeSdkError::NearProofError("Failed to deserialize proof".to_string())
-        })?;
-
-        tracing::debug!("Retrieved Near receipt proof");
-
-        let factory = self.bridge_token_factory()?;
-        let call = factory.new_bridge_token(buffer.into(), proof_block_height);
-
-        let tx = call.send().await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent token deploy transaction"
-        );
-
-        Ok(tx.tx_hash())
-    }
-
     /// Transfers NEP-141 tokens to the token locker. The proof from this transaction is then used to mint the corresponding tokens on Ethereum
     #[tracing::instrument(skip_all, name = "DEPOSIT")]
     pub async fn deposit(
@@ -252,10 +204,10 @@ impl Nep141Connector {
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
     ) -> Result<TxHash> {
-        let transfer_log = self.extract_omni_transfer_log(transaction_hash, sender_id).await?;
+        let transfer_log = self.extract_omni_transfer_log(transaction_hash, sender_id, "SignTransferEvent").await?;
 
         self.finalize_deposit_omni_with_log(
-            serde_json::from_str(transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
         )
         .await
     }
@@ -266,10 +218,10 @@ impl Nep141Connector {
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
     ) -> Result<TxHash> {
-        let transfer_log = self.extract_omni_transfer_log(transaction_hash, sender_id).await?;
+        let transfer_log = self.extract_omni_transfer_log(transaction_hash, sender_id, "LogMetadataEvent").await?;
 
         self.new_bridge_token_omni_with_log(
-            serde_json::from_str(transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
         )
             .await
     }
@@ -278,7 +230,8 @@ impl Nep141Connector {
         &self,
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
-    ) -> Result<&String> {
+        event_name: &str,
+    ) -> Result<String> {
         let near_endpoint = self.near_endpoint()?;
 
         let sender_id = sender_id.unwrap_or(self.near_account_id()?);
@@ -295,49 +248,43 @@ impl Nep141Connector {
             .iter()
             .find(|receipt| {
                 receipt.outcome.logs.len() > 1
-                    && receipt.outcome.logs[0].contains("SignTransferEvent")
+                    && receipt.outcome.logs[0].contains(event_name)
             })
             .ok_or(BridgeSdkError::UnknownError)?
             .outcome
             .logs[0];
 
-        Ok(transfer_log)
+        Ok(transfer_log.clone())
     }
 
-    #[tracing::instrument(skip_all, name = "FINALIZE DEPOSIT OMNI WITH LOG")]
+    #[tracing::instrument(skip_all, name = "NEW BRIDGE TOKEN OMNI WITH LOG")]
     pub async fn new_bridge_token_omni_with_log(
         &self,
         transfer_log: Nep141LockerEvent,
     ) -> Result<TxHash> {
         let factory = self.bridge_token_factory()?;
 
-        let Nep141LockerEvent::SignTransferEvent {
-            message_payload,
+        let Nep141LockerEvent::LogMetadataEvent {
             signature,
+            metadata_payload,
         } = transfer_log
             else {
                 return Err(BridgeSdkError::UnknownError);
             };
 
-        let bridge_deposit = BridgeDeposit {
-            nonce: message_payload.nonce.into(),
-            token: message_payload.token.to_string(),
-            amount: message_payload.amount.into(),
-            recipient: match message_payload.recipient {
-                OmniAddress::Eth(addr) => H160(addr.0),
-                _ => return Err(BridgeSdkError::UnknownError),
-            },
-            fee_recipient: message_payload
-                .fee_recipient
-                .map_or_else(String::new, |addr| addr.to_string()),
+        let payload = MetadataPayload {
+            token: metadata_payload.token,
+            name: metadata_payload.name,
+            symbol: metadata_payload.symbol,
+            decimals: metadata_payload.decimals
         };
 
-        let call = factory.deposit_omni(signature.to_bytes().into(), bridge_deposit);
+        let call = factory.new_bridge_token(signature.to_bytes().into(), payload);
         let tx = call.send().await?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent finalize deposit transaction"
+            "Sent new bridge token transaction"
         );
 
         Ok(tx.tx_hash())

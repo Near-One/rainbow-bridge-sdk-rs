@@ -9,6 +9,7 @@ members = [
     "bridge-sdk/connectors/eth-connector",
     "bridge-sdk/connectors/bridge-connector-common",
     "bridge-sdk/connectors/fast-bridge",
+    "bridge-sdk/connectors/omni-connector",
 ]
 
 [workspace.dependencies]
@@ -36,4 +37,4 @@ dotenv = { version = "0.15" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 base64 = "0.22"
-omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types" }
+omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "8371f5651be317b601703642903a136e8c8c4f13" }

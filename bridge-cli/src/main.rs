@@ -2,6 +2,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use eth_connector_command::EthConnectorSubCommand;
 use fast_bridge_command::FastBridgeSubCommand;
 use nep141_connector_command::Nep141ConnectorSubCommand;
+use omni_connector_command::OmniConnectorSubCommand;
 use serde::Deserialize;
 use std::{env, fs::File, io::BufReader};
 use tracing::level_filters::LevelFilter;
@@ -11,6 +12,7 @@ mod defaults;
 mod eth_connector_command;
 mod fast_bridge_command;
 mod nep141_connector_command;
+mod omni_connector_command;
 
 #[derive(Args, Debug, Clone, Deserialize, Default)]
 struct CliConfig {
@@ -170,6 +172,10 @@ enum SubCommand {
         #[clap(subcommand)]
         cmd: FastBridgeSubCommand,
     },
+    OmniConnector {
+        #[clap(subcommand)]
+        cmd: OmniConnectorSubCommand,
+    },
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -201,6 +207,9 @@ async fn main() {
         }
         SubCommand::FastBridge { cmd } => {
             fast_bridge_command::match_subcommand(cmd, args.network).await
+        }
+        SubCommand::OmniConnector { cmd } => {
+            omni_connector_command::match_subcommand(cmd, args.network).await
         }
     }
 }

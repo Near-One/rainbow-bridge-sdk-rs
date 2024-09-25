@@ -6,14 +6,12 @@ use near_light_client_on_eth::NearOnEthClient;
 use near_primitives::{
     hash::CryptoHash,
     types::{AccountId, TransactionOrReceiptId},
-    views::FinalExecutionOutcomeView,
 };
 use std::{str::FromStr, sync::Arc};
 
 abigen!(
     BridgeTokenFactory,
     r#"[
-      struct BridgeDeposit { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
       function newBridgeToken(bytes memory proofData, uint64 proofBlockHeight) external returns (address)
       function deposit(bytes memory proofData, uint64 proofBlockHeight) external
       function withdraw(string memory token, uint128 amount, string memory recipient) external
@@ -72,7 +70,7 @@ impl Nep141Connector {
             "log_metadata".to_string(),
             args,
             300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
+            0,
         )
         .await?;
 
@@ -327,39 +325,6 @@ impl Nep141Connector {
         );
 
         Ok(tx_hash)
-    }
-
-    /// Signs transfer using the token locker
-    #[tracing::instrument(skip_all, name = "SIGN TRANSFER")]
-    pub async fn sign_transfer(
-        &self,
-        origin_nonce: u128,
-        fee_recepient: Option<AccountId>,
-        fee: u128,
-    ) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.near_endpoint()?;
-
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
-            self.near_signer()?,
-            self.token_locker_id()?.to_string(),
-            "sign_transfer".to_string(),
-            serde_json::json!({
-                "nonce": origin_nonce,
-                "fee_recepient": fee_recepient,
-                "fee": Some(fee)
-            }),
-            300_000_000_000_000,
-            500_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
-            "Sent sign transfer transaction"
-        );
-
-        Ok(outcome)
     }
 
     fn eth_endpoint(&self) -> Result<&str> {

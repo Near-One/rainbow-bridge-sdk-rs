@@ -1,5 +1,5 @@
 [package]
-name = "nep141-connector"
+name = "omni-connector"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,15 +8,14 @@ edition = "2021"
 [dependencies]
 borsh.workspace = true
 ethers.workspace = true
+derive_builder.workspace = true
 hex.workspace = true
 near-crypto.workspace = true
 near-jsonrpc-client.workspace = true
 near-primitives.workspace = true
-derive_builder.workspace = true
-tracing.workspace = true
-serde.workspace = true
+omni-types.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
-near-light-client-on-eth = { path = "../../near-light-client-on-eth" }
 bridge-connector-common = { path = "../bridge-connector-common" }

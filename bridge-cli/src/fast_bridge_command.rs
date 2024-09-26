@@ -3,7 +3,11 @@ use clap::Subcommand;
 use ethers_core::types::{Address, TxHash};
 use fast_bridge::{FastBridge, FastBridgeBuilder};
 use near_primitives::types::AccountId;
-use std::{ops::Add, str::FromStr, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{
+    ops::Add,
+    str::FromStr,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 #[derive(Subcommand, Debug)]
 pub enum FastBridgeSubCommand {
@@ -73,7 +77,8 @@ pub async fn match_subcommand(cmd: FastBridgeSubCommand, network: Network) {
                     .duration_since(UNIX_EPOCH)
                     .expect("Coudn't calculate valid_till");
                 // 30 minutes as default fast bridge transfer timeout
-                duration.add(Duration::from_secs(60 * 30))
+                duration
+                    .add(Duration::from_secs(60 * 30))
                     .as_secs()
                     .checked_mul(1_000_000_000)
                     .expect("Coudn't calculate valid_till")

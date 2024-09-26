@@ -760,6 +760,7 @@ dependencies = [
  "fast-bridge",
  "near-primitives",
  "nep141-connector",
+ "omni-connector",
  "serde",
  "serde_json",
  "tokio",
@@ -1008,7 +1009,7 @@ dependencies = [
  "anstream",
  "anstyle",
  "clap_lex",
- "strsim 0.11.1",
+ "strsim",
 ]
 
 [[package]]
@@ -1390,36 +1391,12 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a01d95850c592940db9b8194bc39f4bc0e89dee5c4265e4b1807c34a9aba453c"
-dependencies = [
- "darling_core 0.13.4",
- "darling_macro 0.13.4",
-]
-
-[[package]]
-name = "darling"
 version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f63b86c8a8826a49b8c21f08a2d07338eec8d900540f8630dc76284be802989"
 dependencies = [
- "darling_core 0.20.10",
- "darling_macro 0.20.10",
-]
-
-[[package]]
-name = "darling_core"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "859d65a907b6852c9361e3185c862aae7fafd2887876799fa55f5f99dc40d610"
-dependencies = [
- "fnv",
- "ident_case",
- "proc-macro2",
- "quote",
- "strsim 0.10.0",
- "syn 1.0.109",
+ "darling_core",
+ "darling_macro",
 ]
 
 [[package]]
@@ -1432,19 +1409,8 @@ dependencies = [
  "ident_case",
  "proc-macro2",
  "quote",
- "strsim 0.11.1",
+ "strsim",
  "syn 2.0.77",
-]
-
-[[package]]
-name = "darling_macro"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c972679f83bdf9c42bd905396b6c3588a843a17f0f16dfcfa3e2c5d57441835"
-dependencies = [
- "darling_core 0.13.4",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -1453,7 +1419,7 @@ version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d336a2a514f6ccccaa3e09b02d41d35330c07ddf03a62165fcec10bb561c7806"
 dependencies = [
- "darling_core 0.20.10",
+ "darling_core",
  "quote",
  "syn 2.0.77",
 ]
@@ -1530,7 +1496,7 @@ version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7431fa049613920234f22c47fdc33e6cf3ee83067091ea4277a3f8c4587aae38"
 dependencies = [
- "darling 0.20.10",
+ "darling",
  "proc-macro2",
  "quote",
  "syn 2.0.77",
@@ -1861,7 +1827,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59c3b24c345d8c314966bdc1832f6c2635bfcce8e7cf363bd115987bba2ee242"
 dependencies = [
- "darling 0.20.10",
+ "darling",
  "proc-macro2",
  "quote",
  "syn 2.0.77",
@@ -3592,29 +3558,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "near-plugins"
-version = "0.2.0"
-source = "git+https://github.com/aurora-is-near/near-plugins?tag=v0.3.0#eff928fda517caf4276b9b58b5a3ece0c48ba5ed"
-dependencies = [
- "bitflags 1.3.2",
- "near-plugins-derive",
- "near-sdk",
- "serde",
-]
-
-[[package]]
-name = "near-plugins-derive"
-version = "0.2.0"
-source = "git+https://github.com/aurora-is-near/near-plugins?tag=v0.3.0#eff928fda517caf4276b9b58b5a3ece0c48ba5ed"
-dependencies = [
- "darling 0.13.4",
- "proc-macro-crate 0.1.5",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "near-primitives"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3745,7 +3688,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e359ccd96ddcc1dad8402ee80c5f4900b8fa5895b4f0bf84c182066a0aa6ed3f"
 dependencies = [
  "Inflector",
- "darling 0.20.10",
+ "darling",
  "proc-macro2",
  "quote",
  "serde",
@@ -3944,7 +3887,6 @@ dependencies = [
  "near-light-client-on-eth",
  "near-primitives",
  "near-rpc-client",
- "omni-types",
  "serde",
  "serde_json",
  "tracing",
@@ -4091,9 +4033,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "omni-connector"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.5.1",
+ "bridge-connector-common",
+ "derive_builder",
+ "eth-proof",
+ "ethers",
+ "hex",
+ "near-crypto",
+ "near-jsonrpc-client",
+ "near-primitives",
+ "near-rpc-client",
+ "omni-types",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "omni-types"
 version = "2.0.0"
-source = "git+https://github.com/near-one/omni-bridge#1162625354487355c5d27d17cdd00535b2e13a63"
+source = "git+https://github.com/near-one/omni-bridge?rev=8371f5651be317b601703642903a136e8c8c4f13#8371f5651be317b601703642903a136e8c8c4f13"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -4102,7 +4063,6 @@ dependencies = [
  "borsh 1.5.1",
  "hex",
  "near-contract-standards",
- "near-plugins",
  "near-sdk",
  "serde",
  "strum_macros 0.26.4",
@@ -5625,7 +5585,7 @@ version = "3.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8fee4991ef4f274617a51ad4af30519438dacb2f56ac773b08a1922ff743350"
 dependencies = [
- "darling 0.20.10",
+ "darling",
  "proc-macro2",
  "quote",
  "syn 2.0.77",
@@ -5852,12 +5812,6 @@ dependencies = [
  "phf_shared 0.10.0",
  "precomputed-hash",
 ]
-
-[[package]]
-name = "strsim"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "strsim"

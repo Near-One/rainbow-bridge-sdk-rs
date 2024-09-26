@@ -371,14 +371,16 @@ impl OmniConnector {
 
     /// Get storage balance of account on NEAR chain
     #[tracing::instrument(skip_all, name = "STORAGE BALANCE OF")]
-    pub async fn storage_balance_of(&self, account_id: AccountId) -> Result<RpcQueryResponse> {
+    pub async fn storage_balance_of(
+        &self,
+        account_id: AccountId,
+        token: AccountId,
+    ) -> Result<RpcQueryResponse> {
         let near_endpoint = self.near_endpoint()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
-            self.token_locker_id()?.parse().map_err(|_| {
-                BridgeSdkError::ConfigError("Invalid near contract account id".to_string())
-            })?,
+            token,
             "storage_balance_of".to_string(),
             serde_json::json!({ "account_id": account_id }),
         )

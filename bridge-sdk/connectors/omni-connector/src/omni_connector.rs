@@ -354,9 +354,9 @@ impl OmniConnector {
             self.token_locker_id()?.to_string(),
             "sign_transfer".to_string(),
             serde_json::json!({
-                "nonce": origin_nonce,
+                "nonce": origin_nonce.to_string(),
                 "fee_recepient": fee_recepient,
-                "fee": Some(fee)
+                "fee": fee.to_string()
             }),
             300_000_000_000_000,
             500_000_000_000_000_000_000_000,

@@ -23,8 +23,6 @@ pub enum Nep141ConnectorSubCommand {
     DeployToken {
         #[clap(short, long)]
         receipt_id: String,
-        #[clap(short, long)]
-        sender_id: String,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -84,12 +82,11 @@ pub async fn match_subcommand(cmd: Nep141ConnectorSubCommand, network: Network) 
         }
         Nep141ConnectorSubCommand::DeployToken {
             receipt_id,
-            sender_id,
             config_cli,
         } => {
             // TODO: use tx hash instead receipt_id
             nep141_connector(network, config_cli)
-                .new_bridge_token_omni(receipt_id.parse().expect("Invalid receipt_id"), Some(sender_id.parse().expect("Invalid sender_id")))
+                .deploy_token(receipt_id.parse().expect("Invalid receipt_id"))
                 .await
                 .unwrap();
         }

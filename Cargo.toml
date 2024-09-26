@@ -36,4 +36,4 @@ dotenv = { version = "0.15" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 base64 = "0.22"
-omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", branch="fix_sign_to_vec"}
+omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types" }

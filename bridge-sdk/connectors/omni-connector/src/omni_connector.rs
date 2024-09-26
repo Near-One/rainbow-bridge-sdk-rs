@@ -3,11 +3,7 @@ use bridge_connector_common::result::{BridgeSdkError, Result};
 use ethers::{abi::Address, prelude::*};
 use near_crypto::SecretKey;
 use near_jsonrpc_client::methods::query::RpcQueryResponse;
-use near_primitives::{
-    hash::CryptoHash,
-    types::AccountId,
-    views::FinalExecutionOutcomeView,
-};
+use near_primitives::{hash::CryptoHash, types::AccountId, views::FinalExecutionOutcomeView};
 use omni_types::{
     locker_args::{ClaimFeeArgs, FinTransferArgs},
     near_events::Nep141LockerEvent,
@@ -120,12 +116,56 @@ impl OmniConnector {
     #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN")]
     pub async fn evm_deploy_token(
         &self,
-        _transaction_hash: CryptoHash,
-        _sender_id: Option<AccountId>,
+        transaction_hash: CryptoHash,
+        sender_id: Option<AccountId>,
     ) -> Result<TxHash> {
-        let _near_endpoint = self.near_endpoint()?;
+        let transfer_log = self
+            .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
+            .await?;
 
-        todo!()
+        self.evm_deploy_token_with_log(
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+        )
+        .await
+    }
+
+    #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN WITH LOG")]
+    pub async fn evm_deploy_token_with_log(
+        &self,
+        transfer_log: Nep141LockerEvent,
+    ) -> Result<TxHash> {
+        let factory = self.bridge_token_factory()?;
+
+        let Nep141LockerEvent::LogMetadataEvent {
+            signature,
+            metadata_payload,
+        } = transfer_log
+        else {
+            return Err(BridgeSdkError::UnknownError);
+        };
+
+        let payload = MetadataPayload {
+            token: metadata_payload.token,
+            name: metadata_payload.name,
+            symbol: metadata_payload.symbol,
+            decimals: metadata_payload.decimals,
+        };
+
+        let serialized_signature = signature.to_bytes();
+
+        assert!(serialized_signature.len() == 65);
+
+        let call = factory
+            .deploy_token(serialized_signature.into(), payload)
+            .gas(500_000);
+        let tx = call.send().await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent new bridge token transaction"
+        );
+
+        Ok(tx.tx_hash())
     }
 
     /// Transfers NEP-141 tokens to the token locker. The proof from this transaction is then used to mint the corresponding tokens on Ethereum
@@ -169,30 +209,12 @@ impl OmniConnector {
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
     ) -> Result<TxHash> {
-        let near_endpoint = self.near_endpoint()?;
-
-        let sender_id = sender_id.unwrap_or(self.near_account_id()?);
-        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
-            transaction_hash,
-            sender_id,
-            near_endpoint,
-            30,
-        )
-        .await?;
-
-        let transfer_log = &sign_tx
-            .receipts_outcome
-            .iter()
-            .find(|receipt| {
-                receipt.outcome.logs.len() > 1
-                    && receipt.outcome.logs[0].contains("SignTransferEvent")
-            })
-            .ok_or(BridgeSdkError::UnknownError)?
-            .outcome
-            .logs[0];
+        let transfer_log = self
+            .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
+            .await?;
 
         self.evm_fin_transfer_with_log(
-            serde_json::from_str(transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
         )
         .await
     }
@@ -371,6 +393,37 @@ impl OmniConnector {
         tracing::info!("Sent claim fee request");
 
         Ok(response)
+    }
+
+    async fn extract_transfer_log(
+        &self,
+        transaction_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+        event_name: &str,
+    ) -> Result<String> {
+        let near_endpoint = self.near_endpoint()?;
+
+        let sender_id = sender_id.unwrap_or(self.near_account_id()?);
+        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
+            transaction_hash,
+            sender_id,
+            near_endpoint,
+            30,
+        )
+        .await?;
+
+        let transfer_log = sign_tx
+            .receipts_outcome
+            .iter()
+            .find(|receipt| {
+                !receipt.outcome.logs.is_empty() && receipt.outcome.logs[0].contains(event_name)
+            })
+            .ok_or(BridgeSdkError::UnknownError)?
+            .outcome
+            .logs[0]
+            .clone();
+
+        Ok(transfer_log)
     }
 
     fn eth_endpoint(&self) -> Result<&str> {

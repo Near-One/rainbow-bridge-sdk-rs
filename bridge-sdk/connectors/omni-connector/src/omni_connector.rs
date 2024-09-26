@@ -159,7 +159,7 @@ impl OmniConnector {
         .await
     }
 
-    #[tracing::instrument(skip_all, name = "NEW BRIDGE TOKEN OMNI WITH LOG")]
+    #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN WITH LOG")]
     pub async fn evm_deploy_token_with_log(
         &self,
         transfer_log: Nep141LockerEvent,

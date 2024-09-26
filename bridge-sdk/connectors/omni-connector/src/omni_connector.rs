@@ -373,8 +373,8 @@ impl OmniConnector {
     #[tracing::instrument(skip_all, name = "STORAGE BALANCE OF")]
     pub async fn storage_balance_of(
         &self,
-        account_id: AccountId,
         token: AccountId,
+        account_id: AccountId,
     ) -> Result<RpcQueryResponse> {
         let near_endpoint = self.near_endpoint()?;
 

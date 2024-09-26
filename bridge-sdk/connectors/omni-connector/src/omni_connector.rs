@@ -3,11 +3,7 @@ use bridge_connector_common::result::{BridgeSdkError, Result};
 use ethers::{abi::Address, prelude::*};
 use near_crypto::SecretKey;
 use near_jsonrpc_client::methods::query::RpcQueryResponse;
-use near_primitives::{
-    hash::CryptoHash,
-    types::AccountId,
-    views::FinalExecutionOutcomeView,
-};
+use near_primitives::{hash::CryptoHash, types::AccountId, views::FinalExecutionOutcomeView};
 use omni_types::{
     locker_args::{ClaimFeeArgs, FinTransferArgs},
     near_events::Nep141LockerEvent,
@@ -369,6 +365,26 @@ impl OmniConnector {
         .await?;
 
         tracing::info!("Sent claim fee request");
+
+        Ok(response)
+    }
+
+    /// Get storage balance of account on NEAR chain
+    #[tracing::instrument(skip_all, name = "STORAGE BALANCE OF")]
+    pub async fn storage_balance_of(&self, account_id: AccountId) -> Result<RpcQueryResponse> {
+        let near_endpoint = self.near_endpoint()?;
+
+        let response = near_rpc_client::view(
+            near_endpoint,
+            self.token_locker_id()?.parse().map_err(|_| {
+                BridgeSdkError::ConfigError("Invalid near contract account id".to_string())
+            })?,
+            "storage_balance_of".to_string(),
+            serde_json::json!({ "account_id": account_id }),
+        )
+        .await?;
+
+        tracing::info!("Sent storage balance of request");
 
         Ok(response)
     }

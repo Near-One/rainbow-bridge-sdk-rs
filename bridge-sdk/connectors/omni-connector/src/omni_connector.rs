@@ -58,37 +58,6 @@ impl OmniConnector {
         Self::default()
     }
 
-    async fn extract_transfer_log(
-        &self,
-        transaction_hash: CryptoHash,
-        sender_id: Option<AccountId>,
-        event_name: &str,
-    ) -> Result<String> {
-        let near_endpoint = self.near_endpoint()?;
-
-        let sender_id = sender_id.unwrap_or(self.near_account_id()?);
-        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
-            transaction_hash,
-            sender_id,
-            near_endpoint,
-            30,
-        )
-        .await?;
-
-        let transfer_log = sign_tx
-            .receipts_outcome
-            .iter()
-            .find(|receipt| {
-                !receipt.outcome.logs.is_empty() && receipt.outcome.logs[0].contains(event_name)
-            })
-            .ok_or(BridgeSdkError::UnknownError)?
-            .outcome
-            .logs[0]
-            .clone();
-
-        Ok(transfer_log)
-    }
-
     /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on Ethereum
     #[tracing::instrument(skip_all, name = "LOG METADATA")]
     pub async fn log_token_metadata(&self, near_token_id: String) -> Result<CryptoHash> {
@@ -424,6 +393,37 @@ impl OmniConnector {
         tracing::info!("Sent claim fee request");
 
         Ok(response)
+    }
+
+    async fn extract_transfer_log(
+        &self,
+        transaction_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+        event_name: &str,
+    ) -> Result<String> {
+        let near_endpoint = self.near_endpoint()?;
+
+        let sender_id = sender_id.unwrap_or(self.near_account_id()?);
+        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
+            transaction_hash,
+            sender_id,
+            near_endpoint,
+            30,
+        )
+        .await?;
+
+        let transfer_log = sign_tx
+            .receipts_outcome
+            .iter()
+            .find(|receipt| {
+                !receipt.outcome.logs.is_empty() && receipt.outcome.logs[0].contains(event_name)
+            })
+            .ok_or(BridgeSdkError::UnknownError)?
+            .outcome
+            .logs[0]
+            .clone();
+
+        Ok(transfer_log)
     }
 
     fn eth_endpoint(&self) -> Result<&str> {

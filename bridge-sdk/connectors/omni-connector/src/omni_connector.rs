@@ -179,8 +179,9 @@ impl OmniConnector {
         let near_endpoint = self.near_endpoint()?;
         let token_locker = self.token_locker_id()?.to_string();
 
+        let fee = 0;
         let args =
-            format!(r#"{{"receiver_id":"{token_locker}","amount":"{amount}","msg":"{receiver}"}}"#)
+            format!(r#"{{"receiver_id":"{token_locker}","amount":"{amount}","msg":"{{\"receiver\":\"{receiver}\",\"fee\":\"{fee}\"}}"}}"#)
                 .into_bytes();
 
         let tx_hash = near_rpc_client::change(
@@ -403,7 +404,10 @@ impl OmniConnector {
     ) -> Result<String> {
         let near_endpoint = self.near_endpoint()?;
 
-        let sender_id = sender_id.unwrap_or(self.near_account_id()?);
+        let sender_id = match sender_id {
+            Some(id) => id,
+            None => self.near_account_id()?,
+        };
         let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
             transaction_hash,
             sender_id,

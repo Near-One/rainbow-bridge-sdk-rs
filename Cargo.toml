@@ -37,4 +37,4 @@ dotenv = { version = "0.15" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 base64 = "0.22"
-omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "d84ae240c05e351ca0212cc202e9c91b258b22f9" }
+omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "292ecfa09fb91191d9ea2f9a6e0c407b1d47be7a" }

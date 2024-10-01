@@ -18,7 +18,7 @@ abigen!(
       struct FinTransferPayload { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
       function deployToken(bytes signatureData, MetadataPayload metadata) external returns (address)
       function finTransfer(bytes, FinTransferPayload) external
-      function initTransfer(string token, uint128 amount, uint128 fee, string memory recipient) external
+      function initTransfer(string token, uint128 amount, uint128 fee, uint128 nativeFee, string memory recipient) external
       function nearToEthToken(string nearTokenId) external view returns (address)
     ]"#
 );
@@ -299,7 +299,8 @@ impl OmniConnector {
             tracing::debug!("Approved tokens for spending");
         }
 
-        let withdraw_call = factory.init_transfer(near_token_id, amount, 0, receiver);
+        // TODO: Provide fee and nativeFee
+        let withdraw_call = factory.init_transfer(near_token_id, amount, 0, 0, receiver);
         let tx = withdraw_call.send().await?;
 
         tracing::info!(

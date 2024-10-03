@@ -6,9 +6,7 @@ use near_crypto::SecretKey;
 use near_primitives::{hash::CryptoHash, types::AccountId, views::{FinalExecutionOutcomeView, FinalExecutionStatus}};
 use near_token::NearToken;
 use omni_types::{
-    locker_args::{ClaimFeeArgs, FinTransferArgs},
-    near_events::Nep141LockerEvent,
-    OmniAddress,
+    locker_args::{ClaimFeeArgs, FinTransferArgs}, near_events::Nep141LockerEvent, Fee, OmniAddress
 };
 use serde_json::json;
 use std::{str::FromStr, sync::Arc};
@@ -371,7 +369,10 @@ impl OmniConnector {
             serde_json::json!({
                 "nonce": origin_nonce.to_string(),
                 "fee_recepient": fee_recepient,
-                "fee": fee.to_string()
+                "fee": Fee {
+                    fee: fee.into(),
+                    native_fee: 0.into()
+                }
             }),
             300_000_000_000_000,
             500_000_000_000_000_000_000_000,

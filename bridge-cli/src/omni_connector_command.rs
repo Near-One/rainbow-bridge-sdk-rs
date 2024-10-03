@@ -66,6 +66,14 @@ pub enum OmniConnectorSubCommand {
         #[command(flatten)]
         config_cli: CliConfig,
     },
+    SignTransfer {
+        #[clap(short, long)]
+        nonce: u128,
+        #[clap(short, long)]
+        fee: u128,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
 }
 
 pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
@@ -107,6 +115,16 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
         } => {
             omni_connector(network, config_cli)
                 .near_init_transfer(token, amount, receiver)
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SignTransfer {
+            nonce,
+            fee,
+            config_cli,
+        } => {
+            omni_connector(network, config_cli)
+                .sign_transfer(nonce, None, fee)
                 .await
                 .unwrap();
         }

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 thiserror.workspace = true
 ethers.workspace = true
+serde_json.workspace = true
 eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
 near-light-client-on-eth = { path = "../../near-light-client-on-eth" }

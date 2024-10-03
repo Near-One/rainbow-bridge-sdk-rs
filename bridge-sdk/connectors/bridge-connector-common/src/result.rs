@@ -23,6 +23,8 @@ pub enum BridgeSdkError {
     EthProofError(String),
     #[error("Error creating Near proof: {0}")]
     NearProofError(String),
+    #[error("Error deserializing RPC response: {0}")]
+    DeserializationError(#[from] serde_json::Error),
     #[error("Unexpected error occured")]
     UnknownError,
 }

@@ -2,7 +2,7 @@ use crate::error::NearRpcError;
 use crate::light_client_proof::LightClientExecutionProof;
 use lazy_static::lazy_static;
 use near_jsonrpc_client::{methods, JsonRpcClient, JsonRpcClientConnector};
-use near_jsonrpc_primitives::types::query::{QueryResponseKind, RpcQueryResponse};
+use near_jsonrpc_primitives::types::query::QueryResponseKind;
 use near_jsonrpc_primitives::types::transactions::TransactionInfo;
 use near_primitives::hash::CryptoHash;
 use near_primitives::transaction::{Action, FunctionCallAction, Transaction};
@@ -35,7 +35,7 @@ pub async fn view(
     contract_account_id: AccountId,
     method_name: String,
     args: serde_json::Value,
-) -> Result<RpcQueryResponse, NearRpcError> {
+) -> Result<Vec<u8>, NearRpcError> {
     let client = DEFAULT_CONNECTOR.connect(server_addr);
     let request = methods::query::RpcQueryRequest {
         block_reference: BlockReference::Finality(Finality::Final),
@@ -45,7 +45,13 @@ pub async fn view(
             args: FunctionArgs::from(args.to_string().into_bytes()),
         },
     };
-    Ok(client.call(request).await?)
+
+    let response = client.call(request).await?;
+    if let QueryResponseKind::CallResult(result) = response.kind {
+        Ok(result.result)
+    } else {
+        Err(NearRpcError::ResultError)
+    }
 }
 
 pub async fn get_light_client_proof(

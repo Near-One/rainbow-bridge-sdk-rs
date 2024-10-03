@@ -776,6 +776,7 @@ dependencies = [
  "ethers",
  "near-light-client-on-eth",
  "near-rpc-client",
+ "serde_json",
  "thiserror",
 ]
 
@@ -3457,9 +3458,9 @@ dependencies = [
 
 [[package]]
 name = "near-contract-standards"
-version = "5.4.0"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "930f4d6c4b2933431acc4a7de0771e1d0de2fa30abe100e09c6fa46531683b4a"
+checksum = "a3b985c4df43237b6ae533a6451cfa13de1f12f79f7d6254ba376f0ccd017286"
 dependencies = [
  "near-sdk",
 ]
@@ -3708,9 +3709,9 @@ dependencies = [
 
 [[package]]
 name = "near-sdk"
-version = "5.4.0"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e3d8d80b1e3f6b1403a18704c5a2fc60176943e32ed9896d238805cd4c65390"
+checksum = "4e296b02c85539c16659e171242d6c6bbea87eec7c9ef860d8dfd3fb3168a18a"
 dependencies = [
  "base64 0.22.1",
  "borsh 1.5.1",
@@ -3728,9 +3729,9 @@ dependencies = [
 
 [[package]]
 name = "near-sdk-macros"
-version = "5.4.0"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e359ccd96ddcc1dad8402ee80c5f4900b8fa5895b4f0bf84c182066a0aa6ed3f"
+checksum = "0adc79466aa556f56a995c0db34a933b32597ab92bbb0e526597118899c8bcaf"
 dependencies = [
  "Inflector",
  "darling",
@@ -4087,10 +4088,12 @@ dependencies = [
  "eth-proof",
  "ethers",
  "hex",
+ "near-contract-standards",
  "near-crypto",
  "near-jsonrpc-client",
  "near-primitives",
  "near-rpc-client",
+ "near-token",
  "omni-types",
  "serde_json",
  "tracing",

@@ -4099,7 +4099,7 @@ dependencies = [
 [[package]]
 name = "omni-types"
 version = "2.0.0"
-source = "git+https://github.com/near-one/omni-bridge?rev=d84ae240c05e351ca0212cc202e9c91b258b22f9#d84ae240c05e351ca0212cc202e9c91b258b22f9"
+source = "git+https://github.com/near-one/omni-bridge?rev=1b88b4ee0df12e2f3007d4f2285e45b654c73b20#1b88b4ee0df12e2f3007d4f2285e45b654c73b20"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",

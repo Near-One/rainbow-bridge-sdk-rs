@@ -16,9 +16,11 @@ abigen!(
     r#"[
       struct MetadataPayload { string token; string name; string symbol; uint8 decimals; }
       struct FinTransferPayload { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
+      struct ClaimFeePayload { uint128[] nonces; uint128 amount; address recipient; }
       function deployToken(bytes signatureData, MetadataPayload metadata) external returns (address)
       function finTransfer(bytes, FinTransferPayload) external
-      function initTransfer(string token, uint128 amount, uint128 fee, string memory recipient) external
+      function initTransfer(string token, uint128 amount, uint128 fee, uint128 nativeFee, string memory recipient) external
+      function claimNativeFee(bytes calldata signatureData, ClaimFeePayload memory payload) external
       function nearToEthToken(string nearTokenId) external view returns (address)
     ]"#
 );
@@ -299,7 +301,8 @@ impl OmniConnector {
             tracing::debug!("Approved tokens for spending");
         }
 
-        let withdraw_call = factory.init_transfer(near_token_id, amount, 0, receiver);
+        // TODO: Provide fee and nativeFee
+        let withdraw_call = factory.init_transfer(near_token_id, amount, 0, 0, receiver);
         let tx = withdraw_call.send().await?;
 
         tracing::info!(
@@ -393,6 +396,65 @@ impl OmniConnector {
         tracing::info!("Sent claim fee request");
 
         Ok(response)
+    }
+
+    /// Claims fee on Ethereum chain
+    #[tracing::instrument(skip_all, name = "EVM CLAIM NATIVE FEE")]
+    pub async fn evm_claim_native_fee(
+        &self,
+        transaction_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+    ) -> Result<TxHash> {
+        let transfer_log = self
+            .extract_transfer_log(transaction_hash, sender_id, "SignClaimNativeFeeEvent")
+            .await?;
+
+        self.evm_claim_native_fee_with_log(
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+        )
+        .await
+    }
+
+    #[tracing::instrument(skip_all, name = "EVM CLAIM NATIVE FEE WITH LOG")]
+    pub async fn evm_claim_native_fee_with_log(
+        &self,
+        transfer_log: Nep141LockerEvent,
+    ) -> Result<TxHash> {
+        let factory = self.bridge_token_factory()?;
+
+        let Nep141LockerEvent::SignClaimNativeFeeEvent {
+            signature,
+            claim_payload,
+        } = transfer_log
+        else {
+            return Err(BridgeSdkError::UnknownError);
+        };
+
+        let OmniAddress::Eth(recipient) = claim_payload.recipient else {
+            return Err(BridgeSdkError::UnknownError);
+        };
+
+        let payload = ClaimFeePayload {
+            nonces: claim_payload.nonces.into_iter().map(Into::into).collect(),
+            amount: claim_payload.amount.into(),
+            recipient: H160(recipient.0),
+        };
+
+        let serialized_signature = signature.to_bytes();
+
+        assert!(serialized_signature.len() == 65);
+
+        let call = factory
+            .claim_native_fee(serialized_signature.into(), payload)
+            .gas(500_000);
+        let tx = call.send().await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent claim native fee transaction"
+        );
+
+        Ok(tx.tx_hash())
     }
 
     async fn extract_transfer_log(

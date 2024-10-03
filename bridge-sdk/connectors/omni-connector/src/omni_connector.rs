@@ -465,7 +465,10 @@ impl OmniConnector {
     ) -> Result<String> {
         let near_endpoint = self.near_endpoint()?;
 
-        let sender_id = sender_id.unwrap_or(self.near_account_id()?);
+        let sender_id = match sender_id {
+            Some(id) => id,
+            None => self.near_account_id()?,
+        };
         let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
             transaction_hash,
             sender_id,

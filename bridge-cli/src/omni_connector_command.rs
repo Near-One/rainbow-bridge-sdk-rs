@@ -1,6 +1,6 @@
 use crate::{combined_config, CliConfig, Network};
 use clap::Subcommand;
-use near_primitives::hash::CryptoHash;
+use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_connector::{OmniConnector, OmniConnectorBuilder};
 use std::str::FromStr;
 
@@ -23,6 +23,8 @@ pub enum OmniConnectorSubCommand {
     EvmDeployToken {
         #[clap(short, long)]
         tx_hash: String,
+        #[clap(short, long)]
+        sender_id: Option<String>,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -39,6 +41,8 @@ pub enum OmniConnectorSubCommand {
     EvmFinTransfer {
         #[clap(short, long)]
         tx_hash: String,
+        #[clap(short, long)]
+        sender_id: Option<String>,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -84,12 +88,13 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
         }
         OmniConnectorSubCommand::EvmDeployToken {
             tx_hash,
+            sender_id,
             config_cli,
         } => {
             omni_connector(network, config_cli)
                 .evm_deploy_token(
                     CryptoHash::from_str(&tx_hash).expect("Invalid tx_hash"),
-                    None,
+                    sender_id.map(|id| AccountId::from_str(&id).expect("Invalid sender_id")),
                 )
                 .await
                 .unwrap();
@@ -107,12 +112,13 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
         }
         OmniConnectorSubCommand::EvmFinTransfer {
             tx_hash,
+            sender_id,
             config_cli,
         } => {
             omni_connector(network, config_cli)
                 .evm_fin_transfer(
                     CryptoHash::from_str(&tx_hash).expect("Invalid tx_hash"),
-                    None,
+                    sender_id.map(|id| AccountId::from_str(&id).expect("Invalid sender_id")),
                 )
                 .await
                 .unwrap();

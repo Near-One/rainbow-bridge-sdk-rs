@@ -3,10 +3,16 @@ use bridge_connector_common::result::{BridgeSdkError, Result};
 use ethers::{abi::Address, prelude::*};
 use near_contract_standards::storage_management::StorageBalance;
 use near_crypto::SecretKey;
-use near_primitives::{hash::CryptoHash, types::AccountId, views::{FinalExecutionOutcomeView, FinalExecutionStatus}};
+use near_primitives::{
+    hash::CryptoHash,
+    types::AccountId,
+    views::{FinalExecutionOutcomeView, FinalExecutionStatus},
+};
 use near_token::NearToken;
 use omni_types::{
-    locker_args::{ClaimFeeArgs, FinTransferArgs}, near_events::Nep141LockerEvent, Fee, OmniAddress
+    locker_args::{ClaimFeeArgs, FinTransferArgs},
+    near_events::Nep141LockerEvent,
+    Fee, OmniAddress,
 };
 use serde_json::json;
 use std::{str::FromStr, sync::Arc};
@@ -181,13 +187,15 @@ impl OmniConnector {
         let near_endpoint = self.near_endpoint()?;
         let token_locker = self.token_locker_id()?.to_string();
 
-        let required_balance = 
-            self.get_required_balance_for_init_transfer(&receiver, self.near_account_id()?.as_str()).await? +
-            self.get_required_balance_for_account().await?;
+        let required_balance = self
+            .get_required_balance_for_init_transfer(&receiver, self.near_account_id()?.as_str())
+            .await?
+            + self.get_required_balance_for_account().await?;
         let existing_balance = self.get_storage_balance().await?;
 
         if existing_balance < required_balance {
-            self.storage_deposit(required_balance - existing_balance).await?;
+            self.storage_deposit(required_balance - existing_balance)
+                .await?;
         }
 
         let fee = 0;
@@ -389,24 +397,31 @@ impl OmniConnector {
 
     /// Claims fee on NEAR chain using the token locker
     #[tracing::instrument(skip_all, name = "CLAIM FEE")]
-    pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<Vec<u8>> {
+    pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<FinalExecutionOutcomeView> {
         let near_endpoint = self.near_endpoint()?;
+        let token_locker_id = self.token_locker_id()?;
 
         let mut serialized_args = Vec::new();
         args.serialize(&mut serialized_args)
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
-        let response = near_rpc_client::view(
+        let outcome = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
-            self.token_locker_id_as_account_id()?,
+            self.near_signer()?,
+            token_locker_id.to_string(),
             "claim_fee".to_string(),
             serialized_args.into(),
+            300_000_000_000_000,
+            200_000_000_000_000_000_000_000,
         )
         .await?;
 
-        tracing::info!("Sent claim fee request");
+        tracing::info!(
+            tx_hash = format!("{:?}", outcome.transaction.hash),
+            "Sent claim fee request"
+        );
 
-        Ok(response)
+        Ok(outcome)
     }
 
     /// Claims fee on Ethereum chain
@@ -470,12 +485,12 @@ impl OmniConnector {
 
     pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
         let near_endpoint = self.near_endpoint()?;
-        let token_loker_id = self.token_locker_id()?;
+        let token_locker_id = self.token_locker_id()?;
 
         let tx = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
             self.near_signer()?,
-            token_loker_id.to_string(),
+            token_locker_id.to_string(),
             "storage_deposit".to_string(),
             json!({
                 "account_id": None::<AccountId>
@@ -499,11 +514,11 @@ impl OmniConnector {
 
     pub async fn get_storage_balance(&self) -> Result<u128> {
         let near_endpoint = self.near_endpoint()?;
-        let token_loker_id = self.token_locker_id_as_account_id()?;
+        let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
-            token_loker_id,
+            token_locker_id,
             "storage_balance_of".to_string(),
             serde_json::json!({
                 "account_id": self.near_account_id()?
@@ -521,11 +536,11 @@ impl OmniConnector {
 
     pub async fn get_required_balance_for_account(&self) -> Result<u128> {
         let near_endpoint = self.near_endpoint()?;
-        let token_loker_id = self.token_locker_id_as_account_id()?;
+        let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
-            token_loker_id,
+            token_locker_id,
             "required_balance_for_account".to_string(),
             serde_json::Value::Null,
         )
@@ -535,13 +550,17 @@ impl OmniConnector {
         Ok(required_balance.as_yoctonear())
     }
 
-    pub async fn get_required_balance_for_init_transfer(&self, recipient: &str, sender: &str) -> Result<u128> {
+    pub async fn get_required_balance_for_init_transfer(
+        &self,
+        recipient: &str,
+        sender: &str,
+    ) -> Result<u128> {
         let near_endpoint = self.near_endpoint()?;
-        let token_loker_id = self.token_locker_id_as_account_id()?;
+        let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
-            token_loker_id,
+            token_locker_id,
             "required_balance_for_init_transfer".to_string(),
             serde_json::json!({
                 "recipient": recipient,
@@ -616,7 +635,8 @@ impl OmniConnector {
     }
 
     fn token_locker_id_as_account_id(&self) -> Result<AccountId> {
-        self.token_locker_id()?.parse::<AccountId>()
+        self.token_locker_id()?
+            .parse::<AccountId>()
             .map_err(|_| BridgeSdkError::ConfigError("Invalid token locker account id".to_string()))
     }
 

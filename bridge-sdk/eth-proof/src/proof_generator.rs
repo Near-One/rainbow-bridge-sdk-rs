@@ -17,6 +17,15 @@ pub async fn get_proof_for_event(
     log_index: u64,
     node_url: &str,
 ) -> Result<EvmProof, EthProofError> {
+    get_proof_for_event_with_log_index(tx_hash, Some(log_index), None, node_url).await
+}
+
+pub async fn get_proof_for_event_with_log_index(
+    tx_hash: H256,
+    log_index: Option<u64>,
+    log_index_in_receipt: Option<usize>,
+    node_url: &str,
+) -> Result<EvmProof, EthProofError> {
     let client = EthRPCClient::new(node_url);
 
     let receipt = client.get_transaction_receipt_by_hash(&tx_hash).await?;
@@ -29,14 +38,24 @@ pub async fn get_proof_for_event(
     let receipt_key = rlp::encode(&receipt.transaction_index);
     let proof = trie.get_proof(&receipt_key)?;
 
-    let mut log_data: Option<Vec<u8>> = None;
-    let mut log_index_in_receipt = 0;
-    for (i, log) in receipt.logs.iter().enumerate() {
-        if log.log_index == log_index.into() {
-            log_data = Some(encode_log(log));
-            log_index_in_receipt = i;
+    let (log_data, log_index_in_receipt) = if let Some(log_index) = log_index {
+        let mut log_data: Option<Vec<u8>> = None;
+        let mut log_index_in_receipt = 0;
+        for (i, log) in receipt.logs.iter().enumerate() {
+            if log.log_index == log_index.into() {
+                log_data = Some(encode_log(log));
+                log_index_in_receipt = i;
+            }
         }
-    }
+        (log_data, log_index_in_receipt)
+    } else {
+        let log_index_in_receipt = log_index_in_receipt
+            .ok_or(EthProofError::Other("No Log index is provided".to_string()))?;
+        (
+            Some(encode_log(&receipt.logs[log_index_in_receipt])),
+            log_index_in_receipt,
+        )
+    };
 
     Ok(EvmProof {
         log_index: log_index_in_receipt as u64,

@@ -90,11 +90,15 @@ impl EthConnector {
 
     /// Generates a proof of the deposit transaction and uses it to mint nETH either on Near or Aurora, depending on the recipient field of the deposit transaction
     #[tracing::instrument(skip_all, name = "FINALIZE DEPOSIT")]
-    pub async fn finalize_deposit(&self, tx_hash: TxHash, log_index: u64) -> Result<CryptoHash> {
+    pub async fn finalize_deposit(&self, tx_hash: TxHash) -> Result<CryptoHash> {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        let proof = eth_proof::get_proof_for_event(tx_hash, log_index, eth_endpoint).await?;
+        // keccak(Deposited(address,string,uint256,uint256))
+        let event_topic = H256::from_str("0xd142439c278e25dad9a50766f153d0e3d2d7bf2bd16fc2781c4bd494b2b15a9d")
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
 
         let mut args = Vec::new();
         proof

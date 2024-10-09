@@ -55,8 +55,6 @@ pub enum Nep141ConnectorSubCommand {
     FinalizeWithdraw {
         #[clap(short, long)]
         tx_hash: String,
-        #[clap(short, long)]
-        log_index: u64,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -124,14 +122,10 @@ pub async fn match_subcommand(cmd: Nep141ConnectorSubCommand, network: Network) 
         }
         Nep141ConnectorSubCommand::FinalizeWithdraw {
             tx_hash,
-            log_index,
             config_cli,
         } => {
             nep141_connector(network, config_cli)
-                .finalize_withdraw(
-                    TxHash::from_str(&tx_hash).expect("Invalid tx_hash"),
-                    log_index,
-                )
+                .finalize_withdraw(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
                 .await
                 .unwrap();
         }

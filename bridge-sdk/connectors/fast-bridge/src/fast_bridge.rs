@@ -157,11 +157,15 @@ impl FastBridge {
 
     /// Unlocks tokens on Near following a successful transfer completion on Ethereum.
     #[tracing::instrument(skip_all, name = "LP UNLOCK")]
-    pub async fn lp_unlock(&self, tx_hash: TxHash, log_index: u64) -> Result<CryptoHash> {
+    pub async fn lp_unlock(&self, tx_hash: TxHash) -> Result<CryptoHash> {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        let proof = eth_proof::get_proof_for_event(tx_hash, log_index, eth_endpoint).await?;
+        // keccak(TransferTokens(uint256,address,address,address,uint256,string,bytes32))
+        let event_topic = H256::from_str("0xed54b7aec45dbd5851e5b6484f6fbc0e5990e127a8f1eea7a1e113eba6bfacf9")
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
 
         let serialized_proof = serde_json::to_string(&proof).unwrap();
         let args = format!(r#"{{"proof":{serialized_proof}}}"#)

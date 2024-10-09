@@ -26,8 +26,6 @@ pub enum EthConnectorSubCommand {
     FinalizeDeposit {
         #[clap(short, long)]
         tx_hash: String,
-        #[clap(short, long)]
-        log_index: u64,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -71,14 +69,10 @@ pub async fn match_subcommand(cmd: EthConnectorSubCommand, network: Network) {
         }
         EthConnectorSubCommand::FinalizeDeposit {
             tx_hash,
-            log_index,
             config_cli,
         } => {
             eth_connector(network, config_cli)
-                .finalize_deposit(
-                    TxHash::from_str(&tx_hash).expect("Invalid tx_hash"),
-                    log_index,
-                )
+                .finalize_deposit(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
                 .await
                 .unwrap();
         }

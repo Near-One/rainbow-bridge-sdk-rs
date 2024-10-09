@@ -295,11 +295,15 @@ impl Nep141Connector {
 
     /// Withdraws NEP-141 tokens from the token locker. Requires a proof from the burn transaction on Ethereum
     #[tracing::instrument(skip_all, name = "FINALIZE WITHDRAW")]
-    pub async fn finalize_withdraw(&self, tx_hash: TxHash, log_index: u64) -> Result<CryptoHash> {
+    pub async fn finalize_withdraw(&self, tx_hash: TxHash) -> Result<CryptoHash> {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        let proof = eth_proof::get_proof_for_event(tx_hash, log_index, eth_endpoint).await?;
+        // keccak(Withdraw(string,address,uint256,string,address))
+        let event_topic = H256::from_str("0x7f3525a267b8c431f1464ccece869a0f8543a71c16fd32c432f25c2525bdcd7e")
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
 
         let mut args = Vec::new();
         proof

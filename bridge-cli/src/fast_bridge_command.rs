@@ -46,8 +46,6 @@ pub enum FastBridgeSubCommand {
     LpUnlock {
         #[clap(short, long)]
         tx_hash: String,
-        #[clap(short, long)]
-        log_index: u64,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -119,14 +117,10 @@ pub async fn match_subcommand(cmd: FastBridgeSubCommand, network: Network) {
         }
         FastBridgeSubCommand::LpUnlock {
             tx_hash,
-            log_index,
             config_cli,
         } => {
             fast_bridge(network, config_cli)
-                .lp_unlock(
-                    TxHash::from_str(&tx_hash).expect("Invalid tx_hash"),
-                    log_index,
-                )
+                .lp_unlock(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
                 .await
                 .unwrap();
         }

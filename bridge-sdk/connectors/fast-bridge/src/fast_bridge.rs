@@ -210,7 +210,7 @@ impl FastBridge {
         if let Some(msg) = msg {
             json.push_str(&format!(r#","msg": "{msg}""#));
         }
-        json.push_str("}");
+        json.push('}');
 
         let args = json.to_string().into_bytes();
 
@@ -286,13 +286,12 @@ impl FastBridge {
                 "Ethereum private key is not set".to_string(),
             ))?;
 
-        let eth_chain_id = self
+        let eth_chain_id = *self
             .eth_chain_id
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Ethereum chain id is not set".to_string(),
-            ))?
-            .clone();
+            ))?;
 
         let private_key_bytes = hex::decode(eth_private_key).map_err(|_| {
             BridgeSdkError::ConfigError(

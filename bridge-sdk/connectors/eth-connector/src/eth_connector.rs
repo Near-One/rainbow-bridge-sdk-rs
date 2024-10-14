@@ -174,7 +174,7 @@ impl EthConnector {
 
         let receipt_id = TransactionOrReceiptId::Receipt {
             receipt_id,
-            receiver_id: AccountId::from_str(&self.eth_connector_account_id()?).map_err(|_| {
+            receiver_id: AccountId::from_str(self.eth_connector_account_id()?).map_err(|_| {
                 BridgeSdkError::ConfigError("Invalid ETH connector account id".to_string())
             })?,
         };
@@ -249,13 +249,12 @@ impl EthConnector {
                 "Ethereum private key is not set".to_string(),
             ))?;
 
-        let eth_chain_id = self
+        let eth_chain_id = *self
             .eth_chain_id
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Ethereum chain id is not set".to_string(),
-            ))?
-            .clone();
+            ))?;
 
         let private_key_bytes = hex::decode(eth_private_key).map_err(|_| {
             BridgeSdkError::ConfigError(

@@ -365,7 +365,7 @@ impl OmniConnector {
         &self,
         origin_nonce: u128,
         fee_recepient: Option<AccountId>,
-        fee: u128,
+        fee: Option<Fee>,
     ) -> Result<FinalExecutionOutcomeView> {
         let near_endpoint = self.near_endpoint()?;
 
@@ -377,10 +377,7 @@ impl OmniConnector {
             serde_json::json!({
                 "nonce": origin_nonce.to_string(),
                 "fee_recepient": fee_recepient,
-                "fee": Fee {
-                    fee: fee.into(),
-                    native_fee: 0.into()
-                }
+                "fee": fee,
             }),
             300_000_000_000_000,
             500_000_000_000_000_000_000_000,

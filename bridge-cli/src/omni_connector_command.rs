@@ -2,6 +2,7 @@ use crate::{combined_config, CliConfig, Network};
 use clap::Subcommand;
 use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_connector::{OmniConnector, OmniConnectorBuilder};
+use omni_types::Fee;
 use std::str::FromStr;
 
 #[derive(Subcommand, Debug)]
@@ -71,6 +72,8 @@ pub enum OmniConnectorSubCommand {
         nonce: u128,
         #[clap(short, long)]
         fee: u128,
+        #[clap(short, long)]
+        native_fee: u128,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -121,10 +124,18 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
         OmniConnectorSubCommand::SignTransfer {
             nonce,
             fee,
+            native_fee,
             config_cli,
         } => {
             omni_connector(network, config_cli)
-                .sign_transfer(nonce, None, fee)
+                .sign_transfer(
+                    nonce,
+                    None,
+                    Some(Fee {
+                        fee: fee.into(),
+                        native_fee: native_fee.into(),
+                    }),
+                )
                 .await
                 .unwrap();
         }
@@ -152,9 +163,7 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
                 .await
                 .unwrap();
         }
-        OmniConnectorSubCommand::NearFinTransfer {
-            ..
-        } => {
+        OmniConnectorSubCommand::NearFinTransfer { .. } => {
             todo!()
         }
     }

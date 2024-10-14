@@ -39,4 +39,4 @@ tracing-subscriber = "0.3"
 base64 = "0.22"
 near-token = "0.3"
 near-contract-standards = "5.5"
-omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "1b88b4ee0df12e2f3007d4f2285e45b654c73b20" }
+omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "21a328f5388bfa98d1ba1eb40b541316429a4369" }

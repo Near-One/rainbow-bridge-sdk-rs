@@ -9,8 +9,8 @@ use near_primitives::{
     views::{FinalExecutionOutcomeView, FinalExecutionStatus},
 };
 use near_token::NearToken;
-use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
+use omni_types::{evm::utils::keccak256, prover_args::EvmVerifyProofArgs};
 use omni_types::{
     locker_args::{BindTokenArgs, ClaimFeeArgs, FinTransferArgs},
     near_events::Nep141LockerEvent,
@@ -426,10 +426,10 @@ impl OmniConnector {
     pub async fn bind_token_with_evm_prover(&self, tx_hash: TxHash) -> Result<CryptoHash> {
         let eth_endpoint = self.eth_endpoint()?;
 
-        // keccak(DeployToken(address,string,string,string,uint8))
-        let event_topic =
-            H256::from_str("0x47f94ffff8bf287abb76c2b671306c7cb14769c4652a1d2fa447722e82107719")
-                .map_err(|_| BridgeSdkError::UnknownError)?;
+        let event_topic = H256::from_str(&hex::encode(keccak256(
+            "DeployToken(address,string,string,string,uint8)".as_bytes(),
+        )))
+        .map_err(|_| BridgeSdkError::UnknownError)?;
 
         let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
 

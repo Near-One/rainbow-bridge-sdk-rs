@@ -7,6 +7,7 @@ use near_primitives::{
     hash::CryptoHash,
     types::{AccountId, TransactionOrReceiptId},
 };
+use omni_types::evm::utils::keccak256;
 use std::{str::FromStr, sync::Arc};
 
 abigen!(
@@ -299,9 +300,10 @@ impl Nep141Connector {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        // keccak(Withdraw(string,address,uint256,string,address))
-        let event_topic = H256::from_str("0x7f3525a267b8c431f1464ccece869a0f8543a71c16fd32c432f25c2525bdcd7e")
-            .map_err(|_| BridgeSdkError::UnknownError)?;
+        let event_topic = H256::from_str(&hex::encode(keccak256(
+            "Withdraw(string,address,uint256,string,address)".as_bytes(),
+        )))
+        .map_err(|_| BridgeSdkError::UnknownError)?;
 
         let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
 

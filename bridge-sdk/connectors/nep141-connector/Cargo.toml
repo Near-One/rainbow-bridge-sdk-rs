@@ -16,6 +16,7 @@ derive_builder.workspace = true
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+omni-types.workspace = true
 eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
 near-light-client-on-eth = { path = "../../near-light-client-on-eth" }

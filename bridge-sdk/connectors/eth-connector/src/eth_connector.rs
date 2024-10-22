@@ -7,6 +7,7 @@ use near_primitives::{
     hash::CryptoHash,
     types::{AccountId, TransactionOrReceiptId},
 };
+use omni_types::evm::utils::keccak256;
 use std::{str::FromStr, sync::Arc};
 
 abigen!(
@@ -94,9 +95,10 @@ impl EthConnector {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        // keccak(Deposited(address,string,uint256,uint256))
-        let event_topic = H256::from_str("0xd142439c278e25dad9a50766f153d0e3d2d7bf2bd16fc2781c4bd494b2b15a9d")
-            .map_err(|_| BridgeSdkError::UnknownError)?;
+        let event_topic = H256::from_str(&hex::encode(keccak256(
+            "Deposited(address,string,uint256,uint256)".as_bytes(),
+        )))
+        .map_err(|_| BridgeSdkError::UnknownError)?;
 
         let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
 

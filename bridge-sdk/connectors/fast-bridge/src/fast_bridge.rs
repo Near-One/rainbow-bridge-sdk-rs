@@ -5,7 +5,7 @@ use derive_builder::Builder;
 use ethers::prelude::*;
 use near_crypto::SecretKey;
 use near_primitives::{hash::CryptoHash, types::AccountId};
-use omni_types::evm::utils::keccak256;
+use sha3::{Digest, Keccak256};
 use std::{str::FromStr, sync::Arc};
 
 abigen!(
@@ -162,7 +162,7 @@ impl FastBridge {
         let eth_endpoint = self.eth_endpoint()?;
         let near_endpoint = self.near_endpoint()?;
 
-        let event_topic = H256::from_str(&hex::encode(keccak256(
+        let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
             "TransferTokens(uint256,address,address,address,uint256,string,bytes32)".as_bytes(),
         )))
         .map_err(|_| BridgeSdkError::UnknownError)?;

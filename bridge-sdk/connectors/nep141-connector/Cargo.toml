@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+sha3.workspace = true
 borsh.workspace = true
 ethers.workspace = true
 hex.workspace = true
@@ -16,7 +17,6 @@ derive_builder.workspace = true
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-omni-types.workspace = true
 eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
 near-light-client-on-eth = { path = "../../near-light-client-on-eth" }

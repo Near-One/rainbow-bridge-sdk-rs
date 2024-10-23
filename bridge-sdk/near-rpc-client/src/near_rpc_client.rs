@@ -148,7 +148,7 @@ pub async fn change_and_wait_for_outcome(
     signer: near_crypto::InMemorySigner,
     receiver_id: String,
     method_name: String,
-    args: serde_json::Value,
+    args: Vec<u8>,
     gas: u64,
     deposit: u128,
 ) -> Result<FinalExecutionOutcomeView, NearRpcError> {
@@ -157,7 +157,7 @@ pub async fn change_and_wait_for_outcome(
         signer.clone(),
         receiver_id,
         method_name,
-        args.to_string().into_bytes(),
+        args,
         gas,
         deposit,
     )

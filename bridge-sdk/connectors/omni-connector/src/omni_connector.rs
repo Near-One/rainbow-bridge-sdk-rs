@@ -1,4 +1,3 @@
-use borsh::BorshSerialize;
 use bridge_connector_common::result::{BridgeSdkError, Result};
 use ethers::{abi::Address, prelude::*};
 use near_contract_standards::storage_management::StorageBalance;
@@ -336,16 +335,12 @@ impl OmniConnector {
     pub async fn near_fin_transfer(&self, args: FinTransferArgs) -> Result<CryptoHash> {
         let near_endpoint = self.near_endpoint()?;
 
-        let mut serialized_args = Vec::new();
-        args.serialize(&mut serialized_args)
-            .map_err(|_| BridgeSdkError::UnknownError)?;
-
         let tx_hash = near_rpc_client::change(
             near_endpoint,
             self.near_signer()?,
             self.token_locker_id()?.to_string(),
             "fin_transfer".to_string(),
-            serialized_args,
+            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
             300_000_000_000_000,
             60_000_000_000_000_000_000_000,
         )
@@ -378,7 +373,9 @@ impl OmniConnector {
                 "nonce": origin_nonce.to_string(),
                 "fee_recepient": fee_recepient,
                 "fee": fee,
-            }),
+            })
+            .to_string()
+            .into_bytes(),
             300_000_000_000_000,
             500_000_000_000_000_000_000_000,
         )
@@ -398,16 +395,12 @@ impl OmniConnector {
         let near_endpoint = self.near_endpoint()?;
         let token_locker_id = self.token_locker_id()?;
 
-        let mut serialized_args = Vec::new();
-        args.serialize(&mut serialized_args)
-            .map_err(|_| BridgeSdkError::UnknownError)?;
-
         let outcome = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
             self.near_signer()?,
             token_locker_id.to_string(),
             "claim_fee".to_string(),
-            serialized_args.into(),
+            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
             300_000_000_000_000,
             200_000_000_000_000_000_000_000,
         )
@@ -441,8 +434,7 @@ impl OmniConnector {
                 "recipient": recipient
             })
             .to_string()
-            .into_bytes()
-            .into(),
+            .into_bytes(),
             300_000_000_000_000,
             500_000_000_000_000_000_000_000,
         )
@@ -526,7 +518,9 @@ impl OmniConnector {
             "storage_deposit".to_string(),
             json!({
                 "account_id": None::<AccountId>
-            }),
+            })
+            .to_string()
+            .into_bytes(),
             10_000_000_000_000,
             amount,
         )

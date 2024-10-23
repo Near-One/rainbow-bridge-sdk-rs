@@ -176,7 +176,9 @@ pub mod tests {
         let event_topic =
             H256::from_str("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
                 .unwrap();
-        let proof = get_proof_for_event(tx_hash, event_topic, RPC_URL).await.unwrap();
+        let proof = get_proof_for_event(tx_hash, event_topic, RPC_URL)
+            .await
+            .unwrap();
         verify_proof(proof, "pre_shapella_proof.json");
     }
 
@@ -188,7 +190,9 @@ pub mod tests {
         let event_topic =
             H256::from_str("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
                 .unwrap();
-        let proof = get_proof_for_event(tx_hash, event_topic, RPC_URL).await.unwrap();
+        let proof = get_proof_for_event(tx_hash, event_topic, RPC_URL)
+            .await
+            .unwrap();
         verify_proof(proof, "post_shapella_proof.json");
     }
 
@@ -200,7 +204,9 @@ pub mod tests {
         let event_topic =
             H256::from_str("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
                 .unwrap();
-        let proof = get_proof_for_event(tx_hash, event_topic, RPC_URL).await.unwrap();
+        let proof = get_proof_for_event(tx_hash, event_topic, RPC_URL)
+            .await
+            .unwrap();
         verify_proof(proof, "post_dencun_proof.json");
     }
 

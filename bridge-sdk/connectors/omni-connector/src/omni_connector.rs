@@ -8,12 +8,15 @@ use near_primitives::{
     views::{FinalExecutionOutcomeView, FinalExecutionStatus},
 };
 use near_token::NearToken;
+use omni_types::prover_args::EvmVerifyProofArgs;
+use omni_types::prover_result::ProofKind;
 use omni_types::{
-    locker_args::{ClaimFeeArgs, FinTransferArgs},
+    locker_args::{BindTokenArgs, ClaimFeeArgs, FinTransferArgs},
     near_events::Nep141LockerEvent,
-    Fee, OmniAddress,
+    ChainKind, Fee, OmniAddress,
 };
 use serde_json::json;
+use sha3::{Digest, Keccak256};
 use std::{str::FromStr, sync::Arc};
 
 abigen!(
@@ -412,6 +415,61 @@ impl OmniConnector {
         );
 
         Ok(outcome)
+    }
+
+    pub async fn bind_token_with_evm_prover(&self, tx_hash: TxHash) -> Result<CryptoHash> {
+        let eth_endpoint = self.eth_endpoint()?;
+
+        let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
+            "DeployToken(address,string,string,string,uint8)".as_bytes(),
+        )))
+        .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
+
+        let evm_verify_proof_args = EvmVerifyProofArgs {
+            proof_kind: ProofKind::DeployToken,
+            proof,
+        };
+
+        let mut proof_args = Vec::new();
+        evm_verify_proof_args
+            .serialize(&mut proof_args)
+            .map_err(|_| BridgeSdkError::EthProofError("Failed to serialize proof".to_string()))?;
+
+        self.bind_token(BindTokenArgs {
+            chain_kind: ChainKind::Eth,
+            prover_args: proof_args,
+        })
+        .await
+    }
+
+    #[tracing::instrument(skip_all, name = "BIND TOKEN")]
+    pub async fn bind_token(&self, args: BindTokenArgs) -> Result<CryptoHash> {
+        let near_endpoint = self.near_endpoint()?;
+        let token_locker_id = self.token_locker_id()?;
+
+        let mut serialized_args = Vec::new();
+        args.serialize(&mut serialized_args)
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let tx_id = near_rpc_client::change(
+            near_endpoint,
+            self.near_signer()?,
+            token_locker_id.to_string(),
+            "bind_token".to_string(),
+            serialized_args,
+            300_000_000_000_000,
+            200_000_000_000_000_000_000_000,
+        )
+        .await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_id),
+            "Sent bind token transaction"
+        );
+
+        Ok(tx_id)
     }
 
     /// Signs claiming native fee on NEAR chain using the token locker

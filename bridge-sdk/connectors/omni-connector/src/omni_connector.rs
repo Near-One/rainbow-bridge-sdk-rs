@@ -1,5 +1,5 @@
-use bridge_connector_common::result::{BridgeSdkError, Result};
 use borsh::BorshSerialize;
+use bridge_connector_common::result::{BridgeSdkError, Result};
 use ethers::{abi::Address, prelude::*};
 use near_contract_standards::storage_management::StorageBalance;
 use near_crypto::SecretKey;
@@ -363,7 +363,7 @@ impl OmniConnector {
     pub async fn sign_transfer(
         &self,
         origin_nonce: u128,
-        fee_recepient: Option<AccountId>,
+        fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
     ) -> Result<FinalExecutionOutcomeView> {
         let near_endpoint = self.near_endpoint()?;
@@ -375,7 +375,7 @@ impl OmniConnector {
             "sign_transfer".to_string(),
             serde_json::json!({
                 "nonce": origin_nonce.to_string(),
-                "fee_recepient": fee_recepient,
+                "fee_recipient": fee_recipient,
                 "fee": fee,
             })
             .to_string()

@@ -17,9 +17,9 @@ mod omni_connector_command;
 #[derive(Args, Debug, Clone, Deserialize, Default)]
 struct CliConfig {
     #[arg(long)]
-    eth_rpc: Option<String>,
+    evm_rpc: Option<String>,
     #[arg(long)]
-    eth_chain_id: Option<u64>,
+    evm_chain_id: Option<u64>,
     #[arg(long)]
     near_rpc: Option<String>,
     #[arg(long)]
@@ -27,11 +27,11 @@ struct CliConfig {
     #[arg(long)]
     near_private_key: Option<String>,
     #[arg(long)]
-    eth_private_key: Option<String>,
+    evm_private_key: Option<String>,
     #[arg(long)]
-    token_locker_id: Option<String>,
+    near_token_locker_id: Option<String>,
     #[arg(long)]
-    bridge_token_factory_address: Option<String>,
+    evm_bridge_token_factory_address: Option<String>,
     #[arg(long)]
     near_light_client_eth_address: Option<String>,
     #[arg(long)]
@@ -49,16 +49,16 @@ struct CliConfig {
 impl CliConfig {
     fn or(self, other: Self) -> Self {
         Self {
-            eth_rpc: self.eth_rpc.or(other.eth_rpc),
-            eth_chain_id: self.eth_chain_id.or(other.eth_chain_id),
+            evm_rpc: self.evm_rpc.or(other.evm_rpc),
+            evm_chain_id: self.evm_chain_id.or(other.evm_chain_id),
             near_rpc: self.near_rpc.or(other.near_rpc),
             near_signer: self.near_signer.or(other.near_signer),
             near_private_key: self.near_private_key.or(other.near_private_key),
-            eth_private_key: self.eth_private_key.or(other.eth_private_key),
-            token_locker_id: self.token_locker_id.or(other.token_locker_id),
-            bridge_token_factory_address: self
-                .bridge_token_factory_address
-                .or(other.bridge_token_factory_address),
+            evm_private_key: self.evm_private_key.or(other.evm_private_key),
+            near_token_locker_id: self.near_token_locker_id.or(other.near_token_locker_id),
+            evm_bridge_token_factory_address: self
+                .evm_bridge_token_factory_address
+                .or(other.evm_bridge_token_factory_address),
             near_light_client_eth_address: self
                 .near_light_client_eth_address
                 .or(other.near_light_client_eth_address),
@@ -75,16 +75,16 @@ impl CliConfig {
 
 fn env_config() -> CliConfig {
     CliConfig {
-        eth_rpc: env::var("ETH_RPC").ok(),
-        eth_chain_id: env::var("ETH_CHAIN_ID")
+        evm_rpc: env::var("ETH_RPC").ok(),
+        evm_chain_id: env::var("ETH_CHAIN_ID")
             .ok()
             .and_then(|val| val.parse::<u64>().ok()),
         near_rpc: env::var("NEAR_RPC").ok(),
         near_signer: env::var("NEAR_SIGNER").ok(),
         near_private_key: env::var("NEAR_PRIVATE_KEY").ok(),
-        eth_private_key: env::var("ETH_PRIVATE_KEY").ok(),
-        token_locker_id: env::var("TOKEN_LOCKER_ID").ok(),
-        bridge_token_factory_address: env::var("BRIDGE_TOKEN_FACTORY_ADDRESS").ok(),
+        evm_private_key: env::var("ETH_PRIVATE_KEY").ok(),
+        near_token_locker_id: env::var("TOKEN_LOCKER_ID").ok(),
+        evm_bridge_token_factory_address: env::var("BRIDGE_TOKEN_FACTORY_ADDRESS").ok(),
         near_light_client_eth_address: env::var("NEAR_LIGHT_CLIENT_ADDRESS").ok(),
         eth_custodian_address: env::var("ETH_CUSTODIAN_ADDRESS").ok(),
         eth_connector_account_id: env::var("ETH_CONNECTOR_ACCOUNT_ID").ok(),
@@ -97,14 +97,14 @@ fn env_config() -> CliConfig {
 fn default_config(network: Network) -> CliConfig {
     match network {
         Network::Mainnet => CliConfig {
-            eth_rpc: Some(defaults::ETH_RPC_MAINNET.to_owned()),
-            eth_chain_id: Some(defaults::ETH_CHAIN_ID_MAINNET),
+            evm_rpc: Some(defaults::ETH_RPC_MAINNET.to_owned()),
+            evm_chain_id: Some(defaults::ETH_CHAIN_ID_MAINNET),
             near_rpc: Some(defaults::NEAR_RPC_MAINNET.to_owned()),
             near_signer: None,
             near_private_key: None,
-            eth_private_key: None,
-            token_locker_id: Some(defaults::TOKEN_LOCKER_ID_MAINNET.to_owned()),
-            bridge_token_factory_address: Some(
+            evm_private_key: None,
+            near_token_locker_id: Some(defaults::TOKEN_LOCKER_ID_MAINNET.to_owned()),
+            evm_bridge_token_factory_address: Some(
                 defaults::BRIDGE_TOKEN_FACTORY_ADDRESS_MAINNET.to_owned(),
             ),
             near_light_client_eth_address: Some(
@@ -117,14 +117,14 @@ fn default_config(network: Network) -> CliConfig {
             config_file: None,
         },
         Network::Testnet => CliConfig {
-            eth_rpc: Some(defaults::ETH_RPC_TESTNET.to_owned()),
-            eth_chain_id: Some(defaults::ETH_CHAIN_ID_TESTNET),
+            evm_rpc: Some(defaults::ETH_RPC_TESTNET.to_owned()),
+            evm_chain_id: Some(defaults::ETH_CHAIN_ID_TESTNET),
             near_rpc: Some(defaults::NEAR_RPC_TESTNET.to_owned()),
             near_signer: None,
             near_private_key: None,
-            eth_private_key: None,
-            token_locker_id: Some(defaults::TOKEN_LOCKER_ID_TESTNET.to_owned()),
-            bridge_token_factory_address: Some(
+            evm_private_key: None,
+            near_token_locker_id: Some(defaults::TOKEN_LOCKER_ID_TESTNET.to_owned()),
+            evm_bridge_token_factory_address: Some(
                 defaults::BRIDGE_TOKEN_FACTORY_ADDRESS_TESTNET.to_owned(),
             ),
             near_light_client_eth_address: Some(

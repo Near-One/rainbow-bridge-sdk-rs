@@ -105,9 +105,9 @@ fn eth_connector(network: Network, cli_config: CliConfig) -> EthConnector {
     let combined_config = combined_config(cli_config, network);
 
     EthConnectorBuilder::default()
-        .eth_endpoint(combined_config.eth_rpc)
-        .eth_chain_id(combined_config.eth_chain_id)
-        .eth_private_key(combined_config.eth_private_key)
+        .eth_endpoint(combined_config.evm_rpc)
+        .eth_chain_id(combined_config.evm_chain_id)
+        .eth_private_key(combined_config.evm_private_key)
         .near_endpoint(combined_config.near_rpc)
         .near_signer(combined_config.near_signer)
         .near_private_key(combined_config.near_private_key)

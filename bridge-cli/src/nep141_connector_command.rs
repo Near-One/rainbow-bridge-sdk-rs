@@ -136,13 +136,13 @@ fn nep141_connector(network: Network, cli_config: CliConfig) -> Nep141Connector 
     let combined_config = combined_config(cli_config, network);
 
     Nep141ConnectorBuilder::default()
-        .eth_endpoint(combined_config.eth_rpc)
-        .eth_chain_id(combined_config.eth_chain_id)
+        .eth_endpoint(combined_config.evm_rpc)
+        .eth_chain_id(combined_config.evm_chain_id)
         .near_endpoint(combined_config.near_rpc)
-        .token_locker_id(combined_config.token_locker_id)
-        .bridge_token_factory_address(combined_config.bridge_token_factory_address)
+        .token_locker_id(combined_config.near_token_locker_id)
+        .bridge_token_factory_address(combined_config.evm_bridge_token_factory_address)
         .near_light_client_address(combined_config.near_light_client_eth_address)
-        .eth_private_key(combined_config.eth_private_key)
+        .eth_private_key(combined_config.evm_private_key)
         .near_signer(combined_config.near_signer)
         .near_private_key(combined_config.near_private_key)
         .build()

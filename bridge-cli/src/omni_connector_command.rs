@@ -178,7 +178,7 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
-                .bind_token_with_evm_prover(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
+                .bind_token_with_eth_prover(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
                 .await
                 .unwrap();
         }
@@ -189,14 +189,14 @@ fn omni_connector(network: Network, cli_config: CliConfig) -> OmniConnector {
     let combined_config = combined_config(cli_config, network);
 
     OmniConnectorBuilder::default()
-        .eth_endpoint(combined_config.eth_rpc)
-        .eth_chain_id(combined_config.eth_chain_id)
+        .evm_endpoint(combined_config.evm_rpc)
+        .evm_chain_id(combined_config.evm_chain_id)
+        .evm_private_key(combined_config.evm_private_key)
+        .evm_bridge_token_factory_address(combined_config.evm_bridge_token_factory_address)
         .near_endpoint(combined_config.near_rpc)
-        .token_locker_id(combined_config.token_locker_id)
-        .bridge_token_factory_address(combined_config.bridge_token_factory_address)
-        .eth_private_key(combined_config.eth_private_key)
-        .near_signer(combined_config.near_signer)
         .near_private_key(combined_config.near_private_key)
+        .near_signer(combined_config.near_signer)
+        .near_token_locker_id(combined_config.near_token_locker_id)
         .build()
         .unwrap()
 }

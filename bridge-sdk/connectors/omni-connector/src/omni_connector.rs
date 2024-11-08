@@ -42,17 +42,17 @@ abigen!(
     ]"#
 );
 
-/// Bridging NEAR-originated NEP-141 tokens to Ethereum and back
+/// Bridging NEAR-originated NEP-141 tokens to EVM and back
 #[derive(Builder, Default)]
 pub struct OmniConnector {
-    #[doc = r"Ethereum RPC endpoint. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
-    eth_endpoint: Option<String>,
-    #[doc = r"Ethereum chain id. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
-    eth_chain_id: Option<u64>,
-    #[doc = r"Ethereum private key. Required for `deploy_token`, `mint`, `burn`"]
-    eth_private_key: Option<String>,
-    #[doc = r"Bridged token factory address on Ethereum. Required for `deploy_token`, `mint`, `burn`"]
-    bridge_token_factory_address: Option<String>,
+    #[doc = r"EVM RPC endpoint. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
+    evm_endpoint: Option<String>,
+    #[doc = r"EVM chain id. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
+    evm_chain_id: Option<u64>,
+    #[doc = r"EVM private key. Required for `deploy_token`, `mint`, `burn`"]
+    evm_private_key: Option<String>,
+    #[doc = r"Bridged token factory address on EVM. Required for `deploy_token`, `mint`, `burn`"]
+    evm_bridge_token_factory_address: Option<String>,
     #[doc = r"NEAR RPC endpoint. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `mint`, `withdraw`"]
     near_endpoint: Option<String>,
     #[doc = r"NEAR private key. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `withdraw`"]
@@ -60,7 +60,7 @@ pub struct OmniConnector {
     #[doc = r"NEAR account id of the transaction signer. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `withdraw`"]
     near_signer: Option<String>,
     #[doc = r"Token locker account id on Near. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `mint`, `withdraw`"]
-    token_locker_id: Option<String>,
+    near_token_locker_id: Option<String>,
 }
 
 impl OmniConnector {
@@ -69,7 +69,7 @@ impl OmniConnector {
         Self::default()
     }
 
-    /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on Ethereum
+    /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on EVM
     #[tracing::instrument(skip_all, name = "LOG METADATA")]
     pub async fn log_token_metadata(&self, near_token_id: String) -> Result<CryptoHash> {
         let near_endpoint = self.near_endpoint()?;
@@ -79,7 +79,7 @@ impl OmniConnector {
         let tx_id = near_rpc_client::change(
             near_endpoint,
             self.near_signer()?,
-            self.token_locker_id()?.to_string(),
+            self.near_token_locker_id()?.to_string(),
             "log_metadata".to_string(),
             args,
             300_000_000_000_000,
@@ -100,7 +100,7 @@ impl OmniConnector {
         amount: u128,
     ) -> Result<CryptoHash> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker = self.token_locker_id()?.to_string();
+        let token_locker = self.near_token_locker_id()?.to_string();
 
         let args = format!(r#"{{"account_id":"{token_locker}"}}"#).into_bytes();
 
@@ -123,7 +123,7 @@ impl OmniConnector {
         Ok(tx_id)
     }
 
-    /// Deploys an ERC-20 token that will be used when bridging NEP-141 tokens to Ethereum. Requires a receipt from log_metadata transaction on Near
+    /// Deploys an ERC-20 token that will be used when bridging NEP-141 tokens to EVM. Requires a receipt from log_metadata transaction on Near
     #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN")]
     pub async fn evm_deploy_token(
         &self,
@@ -179,7 +179,7 @@ impl OmniConnector {
         Ok(tx.tx_hash())
     }
 
-    /// Transfers NEP-141 tokens to the token locker. The proof from this transaction is then used to mint the corresponding tokens on Ethereum
+    /// Transfers NEP-141 tokens to the token locker. The proof from this transaction is then used to mint the corresponding tokens on EVM
     #[tracing::instrument(skip_all, name = "NEAR INIT TRANSFER")]
     pub async fn near_init_transfer(
         &self,
@@ -188,7 +188,7 @@ impl OmniConnector {
         receiver: String,
     ) -> Result<CryptoHash> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker = self.token_locker_id()?.to_string();
+        let token_locker = self.near_token_locker_id()?.to_string();
 
         let required_balance = self
             .get_required_balance_for_init_transfer(&receiver, self.near_account_id()?.as_str())
@@ -225,7 +225,7 @@ impl OmniConnector {
         Ok(tx_hash)
     }
 
-    /// Mints the corresponding bridged tokens on Ethereum. Requires an MPC signature
+    /// Mints the corresponding bridged tokens on EVM. Requires an MPC signature
     #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
     pub async fn evm_fin_transfer(
         &self,
@@ -283,7 +283,7 @@ impl OmniConnector {
         Ok(tx.tx_hash())
     }
 
-    /// Burns bridged tokens on Ethereum. The proof from this transaction is then used to withdraw the corresponding tokens on Near
+    /// Burns bridged tokens on EVM. The proof from this transaction is then used to withdraw the corresponding tokens on Near
     #[tracing::instrument(skip_all, name = "EVM INIT TRANSFER")]
     pub async fn evm_init_transfer(
         &self,
@@ -305,8 +305,8 @@ impl OmniConnector {
 
         let bridge_token = &self.bridge_token(erc20_address)?;
 
-        let signer = self.eth_signer()?;
-        let bridge_token_factory_address = self.bridge_token_factory_address()?;
+        let signer = self.evm_signer()?;
+        let bridge_token_factory_address = self.evm_bridge_token_factory_address()?;
         let allowance = bridge_token
             .allowance(signer.address(), bridge_token_factory_address)
             .call()
@@ -344,7 +344,7 @@ impl OmniConnector {
         let tx_hash = near_rpc_client::change(
             near_endpoint,
             self.near_signer()?,
-            self.token_locker_id()?.to_string(),
+            self.near_token_locker_id()?.to_string(),
             "fin_transfer".to_string(),
             borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
             300_000_000_000_000,
@@ -373,7 +373,7 @@ impl OmniConnector {
         let outcome = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
             self.near_signer()?,
-            self.token_locker_id()?.to_string(),
+            self.near_token_locker_id()?.to_string(),
             "sign_transfer".to_string(),
             serde_json::json!({
                 "nonce": origin_nonce.to_string(),
@@ -399,7 +399,7 @@ impl OmniConnector {
     #[tracing::instrument(skip_all, name = "CLAIM FEE")]
     pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<FinalExecutionOutcomeView> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
+        let token_locker_id = self.near_token_locker_id()?;
 
         let outcome = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
@@ -420,8 +420,8 @@ impl OmniConnector {
         Ok(outcome)
     }
 
-    pub async fn bind_token_with_evm_prover(&self, tx_hash: TxHash) -> Result<CryptoHash> {
-        let eth_endpoint = self.eth_endpoint()?;
+    pub async fn bind_token_with_eth_prover(&self, tx_hash: TxHash) -> Result<CryptoHash> {
+        let eth_endpoint = self.evm_endpoint()?;
 
         let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
             "DeployToken(address,string,string,string,uint8)".as_bytes(),
@@ -450,7 +450,7 @@ impl OmniConnector {
     #[tracing::instrument(skip_all, name = "BIND TOKEN")]
     pub async fn bind_token(&self, args: BindTokenArgs) -> Result<CryptoHash> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
+        let token_locker_id = self.near_token_locker_id()?;
 
         let mut serialized_args = Vec::new();
         args.serialize(&mut serialized_args)
@@ -483,7 +483,7 @@ impl OmniConnector {
         recipient: OmniAddress,
     ) -> Result<FinalExecutionOutcomeView> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
+        let token_locker_id = self.near_token_locker_id()?;
 
         let outcome = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
@@ -509,7 +509,7 @@ impl OmniConnector {
         Ok(outcome)
     }
 
-    /// Claims fee on Ethereum chain
+    /// Claims fee on EVM chain
     #[tracing::instrument(skip_all, name = "EVM CLAIM NATIVE FEE")]
     pub async fn evm_claim_native_fee(
         &self,
@@ -573,7 +573,7 @@ impl OmniConnector {
 
     pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
+        let token_locker_id = self.near_token_locker_id()?;
 
         let tx = near_rpc_client::change_and_wait_for_outcome(
             near_endpoint,
@@ -604,7 +604,7 @@ impl OmniConnector {
 
     pub async fn get_storage_balance(&self) -> Result<u128> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
+        let token_locker_id = self.near_token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
@@ -618,15 +618,12 @@ impl OmniConnector {
 
         let storage_balance: Option<StorageBalance> = serde_json::from_slice(&response)?;
 
-        match storage_balance {
-            Some(balance) => Ok(balance.available.as_yoctonear()),
-            None => Ok(0),
-        }
+        storage_balance.map_or(Ok(0), |balance| Ok(balance.available.as_yoctonear()))
     }
 
     pub async fn get_required_balance_for_account(&self) -> Result<u128> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
+        let token_locker_id = self.near_token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
@@ -646,7 +643,7 @@ impl OmniConnector {
         sender: &str,
     ) -> Result<u128> {
         let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
+        let token_locker_id = self.near_token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             near_endpoint,
@@ -697,12 +694,12 @@ impl OmniConnector {
         Ok(transfer_log)
     }
 
-    fn eth_endpoint(&self) -> Result<&str> {
+    fn evm_endpoint(&self) -> Result<&str> {
         Ok(self
-            .eth_endpoint
+            .evm_endpoint
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
-                "Ethereum rpc endpoint is not set".to_string(),
+                "EVM rpc endpoint is not set".to_string(),
             ))?)
     }
 
@@ -715,23 +712,23 @@ impl OmniConnector {
             ))?)
     }
 
-    fn token_locker_id(&self) -> Result<&str> {
+    fn near_token_locker_id(&self) -> Result<&str> {
         Ok(self
-            .token_locker_id
+            .near_token_locker_id
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Token locker account id is not set".to_string(),
             ))?)
     }
 
-    fn token_locker_id_as_account_id(&self) -> Result<AccountId> {
-        self.token_locker_id()?
+    fn near_token_locker_id_as_account_id(&self) -> Result<AccountId> {
+        self.near_token_locker_id()?
             .parse::<AccountId>()
             .map_err(|_| BridgeSdkError::ConfigError("Invalid token locker account id".to_string()))
     }
 
-    fn bridge_token_factory_address(&self) -> Result<Address> {
-        self.bridge_token_factory_address
+    fn evm_bridge_token_factory_address(&self) -> Result<Address> {
+        self.evm_bridge_token_factory_address
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Bridge token factory address is not set".to_string(),
@@ -739,7 +736,7 @@ impl OmniConnector {
             .and_then(|addr| {
                 Address::from_str(addr).map_err(|_| {
                     BridgeSdkError::ConfigError(
-                        "bridge_token_factory_address is not a valid Ethereum address".to_string(),
+                        "bridge_token_factory_address is not a valid EVM address".to_string(),
                     )
                 })
             })
@@ -774,19 +771,18 @@ impl OmniConnector {
     fn bridge_token_factory(
         &self,
     ) -> Result<BridgeTokenFactory<SignerMiddleware<Provider<Http>, LocalWallet>>> {
-        let eth_endpoint = self.eth_endpoint()?;
+        let evm_endpoint = self.evm_endpoint()?;
 
-        let eth_provider = Provider::<Http>::try_from(eth_endpoint).map_err(|_| {
-            BridgeSdkError::ConfigError("Invalid ethereum rpc endpoint url".to_string())
-        })?;
+        let evm_provider = Provider::<Http>::try_from(evm_endpoint)
+            .map_err(|_| BridgeSdkError::ConfigError("Invalid EVM rpc endpoint url".to_string()))?;
 
-        let wallet = self.eth_signer()?;
+        let wallet = self.evm_signer()?;
 
-        let signer = SignerMiddleware::new(eth_provider, wallet);
+        let signer = SignerMiddleware::new(evm_provider, wallet);
         let client = Arc::new(signer);
 
         Ok(BridgeTokenFactory::new(
-            self.bridge_token_factory_address()?,
+            self.evm_bridge_token_factory_address()?,
             client,
         ))
     }
@@ -795,49 +791,46 @@ impl OmniConnector {
         &self,
         address: Address,
     ) -> Result<ERC20<SignerMiddleware<Provider<Http>, LocalWallet>>> {
-        let eth_endpoint = self.eth_endpoint()?;
+        let evm_endpoint = self.evm_endpoint()?;
 
-        let eth_provider = Provider::<Http>::try_from(eth_endpoint).map_err(|_| {
-            BridgeSdkError::ConfigError("Invalid ethereum rpc endpoint url".to_string())
-        })?;
+        let evm_provider = Provider::<Http>::try_from(evm_endpoint)
+            .map_err(|_| BridgeSdkError::ConfigError("Invalid EVM rpc endpoint url".to_string()))?;
 
-        let wallet = self.eth_signer()?;
+        let wallet = self.evm_signer()?;
 
-        let signer = SignerMiddleware::new(eth_provider, wallet);
+        let signer = SignerMiddleware::new(evm_provider, wallet);
         let client = Arc::new(signer);
 
         Ok(ERC20::new(address, client))
     }
 
-    fn eth_signer(&self) -> Result<LocalWallet> {
-        let eth_private_key = self
-            .eth_private_key
+    fn evm_signer(&self) -> Result<LocalWallet> {
+        let evm_private_key = self
+            .evm_private_key
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
-                "Ethereum private key is not set".to_string(),
+                "EVM private key is not set".to_string(),
             ))?;
 
-        let eth_chain_id = self
-            .eth_chain_id
+        let evm_chain_id = self
+            .evm_chain_id
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
-                "Ethereum chain id is not set".to_string(),
+                "EVM chain id is not set".to_string(),
             ))?;
 
-        let private_key_bytes = hex::decode(eth_private_key).map_err(|_| {
-            BridgeSdkError::ConfigError(
-                "Ethereum private key is not a valid hex string".to_string(),
-            )
+        let evm_private_key_bytes = hex::decode(evm_private_key).map_err(|_| {
+            BridgeSdkError::ConfigError("EVM private key is not a valid hex string".to_string())
         })?;
 
-        if private_key_bytes.len() != 32 {
+        if evm_private_key_bytes.len() != 32 {
             return Err(BridgeSdkError::ConfigError(
-                "Ethereum private key is of invalid length".to_string(),
+                "EVM private key is of invalid length".to_string(),
             ));
         }
 
-        Ok(LocalWallet::from_bytes(&private_key_bytes)
-            .map_err(|_| BridgeSdkError::ConfigError("Invalid ethereum private key".to_string()))?
-            .with_chain_id(*eth_chain_id))
+        Ok(LocalWallet::from_bytes(&evm_private_key_bytes)
+            .map_err(|_| BridgeSdkError::ConfigError("Invalid EVM private key".to_string()))?
+            .with_chain_id(*evm_chain_id))
     }
 }

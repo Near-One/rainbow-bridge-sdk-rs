@@ -39,7 +39,7 @@ struct CliConfig {
     #[arg(long)]
     solana_keypair: Option<String>,
     #[arg(long)]
-    token_locker_id: Option<String>,
+    near_token_locker_id: Option<String>,
     #[arg(long)]
     bridge_token_factory_address: Option<String>,
     #[arg(long)]
@@ -70,7 +70,7 @@ impl CliConfig {
             solana_wormhole_address: self
                 .solana_wormhole_address
                 .or(other.solana_wormhole_address),
-            token_locker_id: self.token_locker_id.or(other.token_locker_id),
+            near_token_locker_id: self.near_token_locker_id.or(other.near_token_locker_id),
             bridge_token_factory_address: self
                 .bridge_token_factory_address
                 .or(other.bridge_token_factory_address),
@@ -102,7 +102,7 @@ fn env_config() -> CliConfig {
         solana_rpc: env::var("SOLANA_RPC").ok(),
         solana_bridge_address: env::var("SOLANA_BRIDGE_ADDRESS").ok(),
         solana_wormhole_address: env::var("SOLANA_WORMHOLE_ADDRESS").ok(),
-        token_locker_id: env::var("TOKEN_LOCKER_ID").ok(),
+        near_token_locker_id: env::var("TOKEN_LOCKER_ID").ok(),
         bridge_token_factory_address: env::var("BRIDGE_TOKEN_FACTORY_ADDRESS").ok(),
         near_light_client_eth_address: env::var("NEAR_LIGHT_CLIENT_ADDRESS").ok(),
         eth_custodian_address: env::var("ETH_CUSTODIAN_ADDRESS").ok(),
@@ -126,7 +126,7 @@ fn default_config(network: Network) -> CliConfig {
             near_signer: None,
             near_private_key: None,
             eth_private_key: None,
-            token_locker_id: Some(defaults::TOKEN_LOCKER_ID_MAINNET.to_owned()),
+            near_token_locker_id: Some(defaults::TOKEN_LOCKER_ID_MAINNET.to_owned()),
             bridge_token_factory_address: Some(
                 defaults::BRIDGE_TOKEN_FACTORY_ADDRESS_MAINNET.to_owned(),
             ),
@@ -150,7 +150,7 @@ fn default_config(network: Network) -> CliConfig {
             near_signer: None,
             near_private_key: None,
             eth_private_key: None,
-            token_locker_id: Some(defaults::TOKEN_LOCKER_ID_TESTNET.to_owned()),
+            near_token_locker_id: Some(defaults::TOKEN_LOCKER_ID_TESTNET.to_owned()),
             bridge_token_factory_address: Some(
                 defaults::BRIDGE_TOKEN_FACTORY_ADDRESS_TESTNET.to_owned(),
             ),

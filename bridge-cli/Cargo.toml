@@ -19,3 +19,4 @@ eth-connector = { path = "../bridge-sdk/connectors/eth-connector" }
 omni-connector = { path = "../bridge-sdk/connectors/omni-connector" }
 fast-bridge = { path = "../bridge-sdk/connectors/fast-bridge" }
 solana-connector = { path = "../bridge-sdk/connectors/solana-connector" }
+near-connector = { path = "../bridge-sdk/connectors/near-connector" }

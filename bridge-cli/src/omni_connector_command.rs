@@ -1,8 +1,9 @@
 use crate::{combined_config, CliConfig, Network};
 use clap::Subcommand;
 use ethers_core::types::TxHash;
+use near_connector::NearConnectorBuilder;
 use near_primitives::{hash::CryptoHash, types::AccountId};
-use omni_connector::{OmniConnector, OmniConnectorBuilder};
+use omni_connector::{EvmConnector, EvmConnectorBuilder};
 use omni_types::Fee;
 use std::str::FromStr;
 
@@ -90,6 +91,8 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
     match cmd {
         OmniConnectorSubCommand::LogMetadata { token, config_cli } => {
             omni_connector(network, config_cli)
+                .near_connector()
+                .unwrap()
                 .log_token_metadata(token)
                 .await
                 .unwrap();
@@ -100,6 +103,8 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
+                .near_connector()
+                .unwrap()
                 .storage_deposit_for_token(token, amount)
                 .await
                 .unwrap();
@@ -124,7 +129,9 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
-                .near_init_transfer(token, amount, receiver)
+                .near_connector()
+                .unwrap()
+                .init_transfer(token, amount, receiver)
                 .await
                 .unwrap();
         }
@@ -135,6 +142,8 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
+                .near_connector()
+                .unwrap()
                 .sign_transfer(
                     nonce,
                     None,
@@ -178,25 +187,30 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
-                .bind_token_with_evm_prover(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
+                .bind_token_with_eth_prover(TxHash::from_str(&tx_hash).expect("Invalid tx_hash"))
                 .await
                 .unwrap();
         }
     }
 }
 
-fn omni_connector(network: Network, cli_config: CliConfig) -> OmniConnector {
+fn omni_connector(network: Network, cli_config: CliConfig) -> EvmConnector {
     let combined_config = combined_config(cli_config, network);
 
-    OmniConnectorBuilder::default()
-        .eth_endpoint(combined_config.eth_rpc)
-        .eth_chain_id(combined_config.eth_chain_id)
-        .near_endpoint(combined_config.near_rpc)
-        .token_locker_id(combined_config.token_locker_id)
+    let near_connector = NearConnectorBuilder::default()
+        .endpoint(combined_config.near_rpc)
+        .private_key(combined_config.near_private_key)
+        .signer(combined_config.near_signer)
+        .token_locker_id(combined_config.near_token_locker_id)
+        .build()
+        .unwrap();
+
+    EvmConnectorBuilder::default()
+        .endpoint(combined_config.eth_rpc)
+        .chain_id(combined_config.eth_chain_id)
+        .private_key(combined_config.eth_private_key)
         .bridge_token_factory_address(combined_config.bridge_token_factory_address)
-        .eth_private_key(combined_config.eth_private_key)
-        .near_signer(combined_config.near_signer)
-        .near_private_key(combined_config.near_private_key)
+        .near_connector(Some(near_connector))
         .build()
         .unwrap()
 }

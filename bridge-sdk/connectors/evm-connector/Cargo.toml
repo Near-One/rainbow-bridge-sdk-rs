@@ -23,3 +23,6 @@ eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
 bridge-connector-common = { path = "../bridge-connector-common" }
 near-connector = { path = "../near-connector" }
+
+[lib]
+path = "src/evm_connector.rs"

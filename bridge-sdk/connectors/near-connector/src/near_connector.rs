@@ -1,4 +1,5 @@
 use bridge_connector_common::result::{BridgeSdkError, Result};
+use derive_builder::Builder;
 use near_contract_standards::storage_management::StorageBalance;
 use near_crypto::SecretKey;
 use near_primitives::{

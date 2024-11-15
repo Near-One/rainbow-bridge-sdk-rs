@@ -16,3 +16,6 @@ near-rpc-client = { path = "../../near-rpc-client" }
 solana-bridge-client = { path = "../../solana-bridge-client" }
 bridge-connector-common = { path = "../bridge-connector-common" }
 near-connector = { path = "../near-connector" }
+
+[lib]
+path = "src/solana_connector.rs"

@@ -1,4 +1,5 @@
 use bridge_connector_common::result::{BridgeSdkError, Result};
+use derive_builder::Builder;
 use ethers::{abi::Address, prelude::*};
 use near_connector::NearConnector;
 use near_primitives::{hash::CryptoHash, types::AccountId};

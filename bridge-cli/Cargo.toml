@@ -16,7 +16,7 @@ tracing.workspace = true
 omni-types.workspace = true
 nep141-connector = { path = "../bridge-sdk/connectors/nep141-connector" }
 eth-connector = { path = "../bridge-sdk/connectors/eth-connector" }
-omni-connector = { path = "../bridge-sdk/connectors/omni-connector" }
+evm-connector = { path = "../bridge-sdk/connectors/evm-connector" }
 fast-bridge = { path = "../bridge-sdk/connectors/fast-bridge" }
 solana-connector = { path = "../bridge-sdk/connectors/solana-connector" }
 near-connector = { path = "../bridge-sdk/connectors/near-connector" }

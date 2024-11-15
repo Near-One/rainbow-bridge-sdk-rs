@@ -1,3 +1,5 @@
+use bridge_connector_common::result::{BridgeSdkError, Result};
+use near_connector::NearConnector;
 use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_types::{near_events::Nep141LockerEvent, OmniAddress};
 use solana_bridge_client::{
@@ -9,16 +11,14 @@ use solana_sdk::{
 };
 use std::str::FromStr;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
 #[derive(Builder, Default)]
 pub struct SolanaConnector {
-    solana_endpoint: Option<String>,
-    solana_bridge_address: Option<String>,
-    solana_wormhole_address: Option<String>,
-    solana_keypair: Option<String>,
-    near_endpoint: Option<String>,
-    near_signer: Option<String>,
+    endpoint: Option<String>,
+    bridge_address: Option<String>,
+    wormhole_address: Option<String>,
+    keypair: Option<String>,
+
+    near_connector: Option<NearConnector>,
 }
 
 impl SolanaConnector {
@@ -28,16 +28,20 @@ impl SolanaConnector {
     }
 
     pub async fn initialize(&self) -> Result<Signature> {
-        let tx_id = self.solana_client()?.initialize(
-            // TODO: Improve this
-            [
-                19, 55, 243, 130, 164, 28, 152, 3, 170, 254, 187, 182, 135, 17, 208, 98, 216, 182,
-                238, 146, 2, 127, 83, 201, 149, 246, 138, 221, 29, 111, 186, 167, 150, 196, 102,
-                219, 89, 69, 115, 114, 185, 116, 6, 233, 154, 114, 222, 142, 167, 206, 157, 39,
-                177, 221, 224, 86, 146, 61, 226, 206, 55, 2, 119, 12,
-            ],
-            self.solana_keypair()?,
-        ).await?;
+        let tx_id = self
+            .client()?
+            .initialize(
+                // TODO: Improve this
+                [
+                    19, 55, 243, 130, 164, 28, 152, 3, 170, 254, 187, 182, 135, 17, 208, 98, 216,
+                    182, 238, 146, 2, 127, 83, 201, 149, 246, 138, 221, 29, 111, 186, 167, 150,
+                    196, 102, 219, 89, 69, 115, 114, 185, 116, 6, 233, 154, 114, 222, 142, 167,
+                    206, 157, 39, 177, 221, 224, 86, 146, 61, 226, 206, 55, 2, 119, 12,
+                ],
+                self.keypair()?,
+            )
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx_id),
@@ -53,15 +57,17 @@ impl SolanaConnector {
         sender_id: Option<AccountId>,
     ) -> Result<Signature> {
         let transfer_log = self
+            .near_connector()?
             .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
-            .await?;
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         let Nep141LockerEvent::LogMetadataEvent {
             signature,
             metadata_payload,
         } = serde_json::from_str(&transfer_log)?
         else {
-            return Err("Unknown error".into());
+            return Err(BridgeSdkError::UnknownError);
         };
 
         let mut signature = signature.to_bytes();
@@ -74,13 +80,16 @@ impl SolanaConnector {
                 symbol: metadata_payload.symbol,
                 decimals: metadata_payload.decimals,
             },
-            signature: signature.try_into().map_err(|_| "Invalid signature")?,
+            signature: signature
+                .try_into()
+                .map_err(|_| BridgeSdkError::UnknownError)?,
         };
 
         let tx_id = self
-            .solana_client()?
-            .deploy_token(payload, self.solana_keypair()?)
-            .await?;
+            .client()?
+            .deploy_token(payload, self.keypair()?)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx_id),
@@ -96,15 +105,17 @@ impl SolanaConnector {
         sender_id: Option<AccountId>,
     ) -> Result<Signature> {
         let transfer_log = self
+            .near_connector()?
             .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
-            .await?;
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         let Nep141LockerEvent::SignTransferEvent {
             message_payload,
             signature,
         } = serde_json::from_str(&transfer_log)?
         else {
-            return Err("Unknown error".into());
+            return Err(BridgeSdkError::UnknownError);
         };
 
         let payload = FinalizeDepositData {
@@ -113,21 +124,24 @@ impl SolanaConnector {
                 token: message_payload.token.to_string(),
                 amount: message_payload.amount.into(),
                 recipient: match message_payload.recipient {
-                    OmniAddress::Sol(addr) => Pubkey::from_str(&addr)?,
-                    _ => return Err("Invalid recipient".into()),
+                    OmniAddress::Sol(addr) => {
+                        Pubkey::from_str(&addr).map_err(|_| BridgeSdkError::UnknownError)?
+                    }
+                    _ => return Err(BridgeSdkError::UnknownError),
                 },
                 fee_recipient: message_payload.fee_recipient.map(|addr| addr.to_string()),
             },
             signature: signature
                 .to_bytes()
                 .try_into()
-                .map_err(|_| "Invalid signature")?,
+                .map_err(|_| BridgeSdkError::UnknownError)?,
         };
 
         let tx_id = self
-            .solana_client()?
-            .finalize_transfer(payload, self.solana_keypair()?)
-            .await?;
+            .client()?
+            .finalize_transfer(payload, self.keypair()?)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx_id),
@@ -139,9 +153,10 @@ impl SolanaConnector {
 
     pub async fn register_token(&self, token: Pubkey) -> Result<Signature> {
         let tx_id = self
-            .solana_client()?
-            .register_token(token, self.solana_keypair()?)
-            .await?;
+            .client()?
+            .register_token(token, self.keypair()?)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx_id),
@@ -157,12 +172,11 @@ impl SolanaConnector {
         amount: u128,
         recipient: String,
     ) -> Result<Signature> {
-        let tx_id = self.solana_client()?.init_transfer_native(
-            token,
-            amount,
-            recipient,
-            self.solana_keypair()?,
-        ).await?;
+        let tx_id = self
+            .client()?
+            .init_transfer_native(token, amount, recipient, self.keypair()?)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx_id),
@@ -178,12 +192,11 @@ impl SolanaConnector {
         amount: u128,
         recipient: String,
     ) -> Result<Signature> {
-        let tx_id = self.solana_client()?.init_transfer_bridged(
-            near_token_id,
-            amount,
-            recipient,
-            self.solana_keypair()?,
-        ).await?;
+        let tx_id = self
+            .client()?
+            .init_transfer_bridged(near_token_id, amount, recipient, self.keypair()?)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
             tx_hash = format!("{:?}", tx_id),
@@ -193,90 +206,53 @@ impl SolanaConnector {
         Ok(tx_id)
     }
 
-    async fn extract_transfer_log(
-        &self,
-        transaction_hash: CryptoHash,
-        sender_id: Option<AccountId>,
-        event_name: &str,
-    ) -> Result<String> {
-        let near_endpoint = self.near_endpoint()?;
-
-        let sender_id = match sender_id {
-            Some(id) => id,
-            None => self.near_account_id()?,
-        };
-        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
-            transaction_hash,
-            sender_id,
-            near_endpoint,
-            30,
-        )
-        .await?;
-
-        let transfer_log = sign_tx
-            .receipts_outcome
-            .iter()
-            .find(|receipt| {
-                !receipt.outcome.logs.is_empty() && receipt.outcome.logs[0].contains(event_name)
-            })
-            .ok_or("Unknown error".to_string())?
-            .outcome
-            .logs[0]
-            .clone();
-
-        Ok(transfer_log)
-    }
-
-    fn solana_client(&self) -> Result<SolanaBridgeClient> {
+    fn client(&self) -> Result<SolanaBridgeClient> {
         Ok(SolanaBridgeClient::new(
-            self.solana_endpoint()?.to_string(),
-            self.solana_bridge_address()?.parse()?,
-            self.solana_wormhole_address()?.parse()?,
+            self.endpoint()?.to_string(),
+            self.bridge_address()?
+                .parse()
+                .map_err(|_| BridgeSdkError::ConfigError("Invalid bridge address".to_string()))?,
+            self.wormhole_address()?
+                .parse()
+                .map_err(|_| BridgeSdkError::ConfigError("Invalid wormhole address".to_string()))?,
         ))
     }
 
-    fn near_endpoint(&self) -> Result<&str> {
-        Ok(self
-            .near_endpoint
-            .as_ref()
-            .ok_or("Near rpc endpoint is not set".to_string())?)
+    fn endpoint(&self) -> Result<&str> {
+        Ok(self.endpoint.as_ref().ok_or(BridgeSdkError::ConfigError(
+            "Solana rpc endpoint is not set".to_string(),
+        ))?)
     }
 
-    fn near_account_id(&self) -> Result<AccountId> {
+    fn bridge_address(&self) -> Result<&str> {
         Ok(self
-            .near_signer
+            .bridge_address
             .as_ref()
-            .ok_or("Near signer account id is not set".to_string())?
-            .parse::<AccountId>()
-            .map_err(|_| "Invalid near signer account id".to_string())?)
+            .ok_or(BridgeSdkError::ConfigError(
+                "Solana bridge address is not set".to_string(),
+            ))?)
     }
 
-    fn solana_endpoint(&self) -> Result<&str> {
+    fn wormhole_address(&self) -> Result<&str> {
         Ok(self
-            .solana_endpoint
+            .wormhole_address
             .as_ref()
-            .ok_or("Solana rpc endpoint is not set".to_string())?)
+            .ok_or(BridgeSdkError::ConfigError(
+                "Solana wormhole address is not set".to_string(),
+            ))?)
     }
 
-    fn solana_bridge_address(&self) -> Result<&str> {
-        Ok(self
-            .solana_bridge_address
-            .as_ref()
-            .ok_or("Solana bridge address is not set".to_string())?)
+    fn keypair(&self) -> Result<Keypair> {
+        Ok(Keypair::from_base58_string(self.keypair.as_ref().ok_or(
+            BridgeSdkError::ConfigError("Solana keypair is not set".to_string()),
+        )?))
     }
 
-    fn solana_wormhole_address(&self) -> Result<&str> {
-        Ok(self
-            .solana_wormhole_address
+    fn near_connector(&self) -> Result<&NearConnector> {
+        self.near_connector
             .as_ref()
-            .ok_or("Solana wormhole address is not set".to_string())?)
-    }
-
-    fn solana_keypair(&self) -> Result<Keypair> {
-        Ok(Keypair::from_base58_string(
-            self.solana_keypair
-                .as_ref()
-                .ok_or("Solana keypair is not set".to_string())?,
-        ))
+            .ok_or(BridgeSdkError::ConfigError(
+                "Near connector is not set".to_string(),
+            ))
     }
 }

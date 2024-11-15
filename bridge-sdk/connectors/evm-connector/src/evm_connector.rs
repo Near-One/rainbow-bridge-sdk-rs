@@ -43,6 +43,7 @@ pub struct EvmConnector {
     private_key: Option<String>,
     #[doc = r"Bridged token factory address on EVM. Required for `deploy_token`, `mint`, `burn`"]
     bridge_token_factory_address: Option<String>,
+
     #[doc = r"NEAR connector. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
     near_connector: Option<NearConnector>,
 }

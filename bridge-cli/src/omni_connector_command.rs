@@ -1,9 +1,9 @@
 use crate::{combined_config, CliConfig, Network};
 use clap::Subcommand;
 use ethers_core::types::TxHash;
+use evm_connector::{EvmConnector, EvmConnectorBuilder};
 use near_connector::NearConnectorBuilder;
 use near_primitives::{hash::CryptoHash, types::AccountId};
-use omni_connector::{EvmConnector, EvmConnectorBuilder};
 use omni_types::Fee;
 use std::str::FromStr;
 

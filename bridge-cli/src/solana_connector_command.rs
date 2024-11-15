@@ -1,4 +1,5 @@
 use clap::Subcommand;
+use near_connector::NearConnectorBuilder;
 use solana_connector::{SolanaConnector, SolanaConnectorBuilder};
 
 use crate::{combined_config, CliConfig, Network};
@@ -121,13 +122,18 @@ pub async fn match_subcommand(cmd: SolanaConnectorSubCommand, network: Network) 
 fn solana_connector(network: Network, cli_config: CliConfig) -> SolanaConnector {
     let combined_config = combined_config(cli_config, network);
 
+    let near_connector = NearConnectorBuilder::default()
+        .endpoint(combined_config.near_rpc)
+        .signer(combined_config.near_signer)
+        .build()
+        .unwrap();
+
     SolanaConnectorBuilder::default()
-        .solana_endpoint(combined_config.solana_rpc)
-        .solana_bridge_address(combined_config.solana_bridge_address)
-        .solana_wormhole_address(combined_config.solana_wormhole_address)
-        .near_endpoint(combined_config.near_rpc)
-        .near_signer(combined_config.near_signer)
-        .solana_keypair(combined_config.solana_keypair)
+        .endpoint(combined_config.solana_rpc)
+        .bridge_address(combined_config.solana_bridge_address)
+        .wormhole_address(combined_config.solana_wormhole_address)
+        .keypair(combined_config.solana_keypair)
+        .near_connector(Some(near_connector))
         .build()
         .unwrap()
 }

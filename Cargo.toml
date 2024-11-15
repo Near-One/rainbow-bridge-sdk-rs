@@ -9,7 +9,7 @@ members = [
     "bridge-sdk/connectors/eth-connector",
     "bridge-sdk/connectors/bridge-connector-common",
     "bridge-sdk/connectors/fast-bridge",
-    "bridge-sdk/connectors/omni-connector",
+    "bridge-sdk/connectors/evm-connector",
     "bridge-sdk/solana-bridge-client", "bridge-sdk/connectors/near-connector",
 ]
 

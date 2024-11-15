@@ -1049,11 +1049,11 @@ dependencies = [
  "dotenv",
  "eth-connector",
  "ethers-core",
+ "evm-connector",
  "fast-bridge",
  "near-connector",
  "near-primitives",
  "nep141-connector",
- "omni-connector",
  "omni-types",
  "serde",
  "serde_json",
@@ -2894,6 +2894,29 @@ name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
+
+[[package]]
+name = "evm-connector"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.5.1",
+ "bridge-connector-common",
+ "derive_builder",
+ "eth-proof",
+ "ethers",
+ "hex",
+ "near-connector",
+ "near-contract-standards",
+ "near-crypto",
+ "near-jsonrpc-client",
+ "near-primitives",
+ "near-rpc-client",
+ "near-token",
+ "omni-types",
+ "serde_json",
+ "sha3 0.10.8",
+ "tracing",
+]
 
 [[package]]
 name = "eyre"
@@ -5252,29 +5275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "omni-connector"
-version = "0.1.0"
-dependencies = [
- "borsh 1.5.1",
- "bridge-connector-common",
- "derive_builder",
- "eth-proof",
- "ethers",
- "hex",
- "near-connector",
- "near-contract-standards",
- "near-crypto",
- "near-jsonrpc-client",
- "near-primitives",
- "near-rpc-client",
- "near-token",
- "omni-types",
- "serde_json",
- "sha3 0.10.8",
- "tracing",
-]
-
-[[package]]
 name = "omni-types"
 version = "2.0.0"
 source = "git+https://github.com/near-one/omni-bridge?rev=234cc6af6920027f779b842a6d8afc00530ddbc2#234cc6af6920027f779b842a6d8afc00530ddbc2"
@@ -7401,7 +7401,9 @@ dependencies = [
 name = "solana-connector"
 version = "0.1.0"
 dependencies = [
+ "bridge-connector-common",
  "derive_builder",
+ "near-connector",
  "near-primitives",
  "near-rpc-client",
  "omni-types",

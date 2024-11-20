@@ -279,24 +279,6 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
                 .await
                 .unwrap();
         }
-        OmniConnectorSubCommand::BindTokenWormhole {
-            source_chain_id,
-            vaa,
-            config_cli,
-        } => {
-            let args = omni_types::prover_args::WormholeVerifyProofArgs {
-                proof_kind: omni_types::prover_result::ProofKind::DeployToken,
-                vaa,
-            };
-
-            omni_connector(network, config_cli)
-                .bind_token(BindTokenArgs {
-                    chain_kind: ChainKind::try_from(source_chain_id).unwrap(),
-                    prover_args: near_primitives::borsh::to_vec(&args).unwrap(),
-                })
-                .await
-                .unwrap();
-        }
     }
 }
 

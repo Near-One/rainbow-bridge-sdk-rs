@@ -1,6 +1,13 @@
-use crate::DeployTokenData;
+use crate::{DeployTokenData, TransferId};
 use borsh::BorshSerialize;
+use sha2::{Digest, Sha256};
 use solana_sdk::pubkey::Pubkey;
+
+fn get_instruction_identifier(instruction_name: &str) -> [u8; 8] {
+    let mut identifier = Sha256::new();
+    identifier.update(instruction_name.as_bytes());
+    identifier.finalize()[..8].try_into().unwrap()
+}
 
 pub struct Initialize {
     pub admin: Pubkey,
@@ -9,8 +16,7 @@ pub struct Initialize {
 
 impl BorshSerialize for Initialize {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        // TODO: Calculate discriminators based on instruction name
-        writer.write_all(&[175, 175, 109, 31, 13, 152, 155, 237])?;
+        writer.write_all(&get_instruction_identifier("global:initialize"))?;
         writer.write_all(&self.admin.to_bytes())?;
         writer.write_all(&self.derived_near_bridge_address)?;
         Ok(())
@@ -23,74 +29,80 @@ pub struct DeployToken {
 
 impl BorshSerialize for DeployToken {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&[144, 104, 20, 192, 18, 112, 224, 140])?;
+        writer.write_all(&get_instruction_identifier("global:deploy_token"))?;
         self.data.serialize(writer)?;
         Ok(())
     }
 }
 
 #[derive(BorshSerialize)]
-pub struct DepositInstructionPayload {
-    pub nonce: u128,
-    pub token: String,
+pub struct FinalizeTransferInstructionPayload {
+    pub destination_nonce: u64,
+    pub transfer_id: TransferId,
     pub amount: u128,
     pub fee_recipient: Option<String>,
 }
 
-pub struct FinalizeDeposit {
-    pub payload: DepositInstructionPayload,
+pub struct FinalizeTransfer {
+    pub payload: FinalizeTransferInstructionPayload,
     pub signature: [u8; 65],
 }
 
-impl BorshSerialize for FinalizeDeposit {
+impl BorshSerialize for FinalizeTransfer {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&[240, 178, 165, 14, 221, 29, 104, 47])?;
+        writer.write_all(&get_instruction_identifier("global:finalize_transfer"))?;
         self.payload.serialize(writer)?;
         writer.write_all(&self.signature)?;
         Ok(())
     }
 }
 
-pub struct RegisterMint {
+pub struct LogMetadata {
     pub override_name: String,
     pub override_symbol: String,
 }
 
-impl BorshSerialize for RegisterMint {
+impl BorshSerialize for LogMetadata {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&[242, 43, 74, 162, 217, 214, 191, 171])?;
+        writer.write_all(&get_instruction_identifier("global:log_metadata"))?;
         self.override_name.serialize(writer)?;
         self.override_symbol.serialize(writer)?;
         Ok(())
     }
 }
 
-pub struct Send {
+pub struct InitTransfer {
     pub amount: u128,
     pub recipient: String,
+    pub fee: u128,
+    pub native_fee: u64,
 }
 
-impl BorshSerialize for Send {
+impl BorshSerialize for InitTransfer {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&[102, 251, 20, 187, 65, 75, 12, 69])?;
+        writer.write_all(&get_instruction_identifier("global:init_transfer"))?;
         self.amount.serialize(writer)?;
         self.recipient.serialize(writer)?;
+        self.fee.serialize(writer)?;
+        self.native_fee.serialize(writer)?;
         Ok(())
     }
 }
 
-pub struct Repay {
-    pub token: String,
+pub struct InitTransferSol {
     pub amount: u128,
     pub recipient: String,
+    pub fee: u128,
+    pub native_fee: u64,
 }
 
-impl BorshSerialize for Repay {
+impl BorshSerialize for InitTransferSol {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&[234, 103, 67, 82, 208, 234, 219, 166])?;
-        self.token.serialize(writer)?;
+        writer.write_all(&get_instruction_identifier("global:init_transfer_sol"))?;
         self.amount.serialize(writer)?;
         self.recipient.serialize(writer)?;
+        self.fee.serialize(writer)?;
+        self.native_fee.serialize(writer)?;
         Ok(())
     }
 }

@@ -5,12 +5,12 @@ use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_types::{near_events::Nep141LockerEvent, OmniAddress};
 use solana_bridge_client::{
     DeployTokenData, DepositPayload, FinalizeDepositData, MetadataPayload, SolanaBridgeClient,
+    TransferId,
 };
 use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature},
 };
-use std::str::FromStr;
 
 #[derive(Builder, Default)]
 pub struct SolanaConnector {
@@ -28,28 +28,31 @@ impl SolanaConnector {
         Self::default()
     }
 
-    pub async fn initialize(&self) -> Result<Signature> {
-        let tx_id = self
+    pub async fn initialize(&self, program_keypair: Keypair) -> Result<Signature> {
+        // Derived based on near bridge account id and derivation path (bridge-1)
+        const DERIVED_NEAR_BRIDGE_ADDRESS: [u8; 64] = [
+            19, 55, 243, 130, 164, 28, 152, 3, 170, 254, 187, 182, 135, 17, 208, 98, 216, 182, 238,
+            146, 2, 127, 83, 201, 149, 246, 138, 221, 29, 111, 186, 167, 150, 196, 102, 219, 89,
+            69, 115, 114, 185, 116, 6, 233, 154, 114, 222, 142, 167, 206, 157, 39, 177, 221, 224,
+            86, 146, 61, 226, 206, 55, 2, 119, 12,
+        ];
+
+        let tx_hash = self
             .client()?
             .initialize(
-                // TODO: Improve this
-                [
-                    19, 55, 243, 130, 164, 28, 152, 3, 170, 254, 187, 182, 135, 17, 208, 98, 216,
-                    182, 238, 146, 2, 127, 83, 201, 149, 246, 138, 221, 29, 111, 186, 167, 150,
-                    196, 102, 219, 89, 69, 115, 114, 185, 116, 6, 233, 154, 114, 222, 142, 167,
-                    206, 157, 39, 177, 221, 224, 86, 146, 61, 226, 206, 55, 2, 119, 12,
-                ],
+                DERIVED_NEAR_BRIDGE_ADDRESS,
+                program_keypair,
                 self.keypair()?,
             )
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
+            tx_hash = format!("{:?}", tx_hash),
             "Sent initialize transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
     pub async fn deploy_token(
@@ -86,23 +89,24 @@ impl SolanaConnector {
                 .map_err(|_| BridgeSdkError::UnknownError)?,
         };
 
-        let tx_id = self
+        let tx_hash = self
             .client()?
             .deploy_token(payload, self.keypair()?)
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
+            tx_hash = format!("{:?}", tx_hash),
             "Sent deploy token transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
     pub async fn finalize_transfer(
         &self,
         transaction_hash: CryptoHash,
+        solana_token: Pubkey, // TODO: retrieve from near contract
         sender_id: Option<AccountId>,
     ) -> Result<Signature> {
         let transfer_log = self
@@ -119,92 +123,91 @@ impl SolanaConnector {
             return Err(BridgeSdkError::UnknownError);
         };
 
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27;
+
         let payload = FinalizeDepositData {
             payload: DepositPayload {
-                nonce: message_payload.nonce.into(),
-                token: message_payload.token.to_string(),
+                destination_nonce: message_payload.destination_nonce,
+                transfer_id: TransferId {
+                    origin_chain: 1,
+                    origin_nonce: message_payload.transfer_id.origin_nonce,
+                },
+                token: "wrap.testnet".to_string(),
                 amount: message_payload.amount.into(),
                 recipient: match message_payload.recipient {
-                    OmniAddress::Sol(addr) => {
-                        Pubkey::from_str(&addr).map_err(|_| BridgeSdkError::UnknownError)?
-                    }
+                    OmniAddress::Sol(addr) => Pubkey::new_from_array(addr.0),
                     _ => return Err(BridgeSdkError::UnknownError),
                 },
                 fee_recipient: message_payload.fee_recipient.map(|addr| addr.to_string()),
             },
             signature: signature
-                .to_bytes()
                 .try_into()
                 .map_err(|_| BridgeSdkError::UnknownError)?,
         };
 
-        let tx_id = self
+        let tx_hash = self
             .client()?
-            .finalize_transfer(payload, self.keypair()?)
+            .finalize_transfer(payload, solana_token, self.keypair()?)
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
+            tx_hash = format!("{:?}", tx_hash),
             "Sent finalize transfer transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
-    pub async fn register_token(&self, token: Pubkey) -> Result<Signature> {
-        let tx_id = self
+    pub async fn log_metadata(&self, token: Pubkey) -> Result<Signature> {
+        let tx_hash = self
             .client()?
-            .register_token(token, self.keypair()?)
+            .log_metadata(token, self.keypair()?)
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
+            tx_hash = format!("{:?}", tx_hash),
             "Sent register token transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
-    pub async fn init_transfer_native(
+    pub async fn init_transfer(
         &self,
         token: Pubkey,
         amount: u128,
         recipient: String,
     ) -> Result<Signature> {
-        let tx_id = self
+        let tx_hash = self
             .client()?
-            .init_transfer_native(token, amount, recipient, self.keypair()?)
+            .init_transfer(token, amount, recipient, self.keypair()?)
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
+            tx_hash = format!("{:?}", tx_hash),
             "Sent init transfer native transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
-    pub async fn init_transfer_bridged(
-        &self,
-        near_token_id: String,
-        amount: u128,
-        recipient: String,
-    ) -> Result<Signature> {
-        let tx_id = self
+    pub async fn init_transfer_sol(&self, amount: u128, recipient: String) -> Result<Signature> {
+        let tx_hash = self
             .client()?
-            .init_transfer_bridged(near_token_id, amount, recipient, self.keypair()?)
+            .init_transfer_sol(amount, recipient, self.keypair()?)
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
-            "Sent init transfer bridged transaction"
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent init transfer SOL transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
     fn client(&self) -> Result<SolanaBridgeClient> {

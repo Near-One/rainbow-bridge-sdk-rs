@@ -9,8 +9,8 @@ use near_primitives::{
 };
 use near_token::NearToken;
 use omni_types::{
-    locker_args::{BindTokenArgs, ClaimFeeArgs, FinTransferArgs},
-    Fee, OmniAddress,
+    locker_args::{BindTokenArgs, ClaimFeeArgs, DeployTokenArgs, FinTransferArgs},
+    ChainKind, Fee, OmniAddress,
 };
 use serde_json::json;
 use std::str::FromStr;
@@ -36,7 +36,7 @@ impl NearConnector {
 
         let args = format!(r#"{{"token_id":"{near_token_id}"}}"#).into_bytes();
 
-        let tx_id = near_rpc_client::change(
+        let tx_hash = near_rpc_client::change(
             near_endpoint,
             self.signer()?,
             self.token_locker_id_as_str()?.to_string(),
@@ -47,9 +47,9 @@ impl NearConnector {
         )
         .await?;
 
-        tracing::info!(tx_hash = tx_id.to_string(), "Sent log transaction");
+        tracing::info!(tx_hash = tx_hash.to_string(), "Sent log transaction");
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
     /// Performs a storage deposit on behalf of the token_locker so that the tokens can be transferred to the locker. To be called once for each NEP-141
@@ -64,7 +64,7 @@ impl NearConnector {
 
         let args = format!(r#"{{"account_id":"{token_locker}"}}"#).into_bytes();
 
-        let tx_id = near_rpc_client::change(
+        let tx_hash = near_rpc_client::change(
             near_endpoint,
             self.signer()?,
             near_token_id,
@@ -76,18 +76,51 @@ impl NearConnector {
         .await?;
 
         tracing::info!(
-            tx_hash = tx_id.to_string(),
+            tx_hash = tx_hash.to_string(),
             "Sent storage deposit transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
+    }
+
+    pub async fn deploy_token(&self, chain_kind: ChainKind, vaa: &str) -> Result<CryptoHash> {
+        let endpoint = self.endpoint()?;
+        let token_locker_id = self.token_locker_id_as_str()?;
+
+        let prover_args = omni_types::prover_args::WormholeVerifyProofArgs {
+            proof_kind: omni_types::prover_result::ProofKind::LogMetadata,
+            vaa: vaa.to_owned(),
+        };
+
+        let args = DeployTokenArgs {
+            chain_kind,
+            prover_args: borsh::to_vec(&prover_args).unwrap(),
+        };
+
+        let tx_hash = near_rpc_client::change(
+            endpoint,
+            self.signer()?,
+            token_locker_id.to_string(),
+            "deploy_token".to_string(),
+            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
+            120_000_000_000_000,
+            4_000_000_000_000_000_000_000_000,
+        )
+        .await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent deploy token transaction"
+        );
+
+        Ok(tx_hash)
     }
 
     /// Signs transfer using the token locker
     #[tracing::instrument(skip_all, name = "SIGN TRANSFER")]
     pub async fn sign_transfer(
         &self,
-        origin_nonce: u128,
+        origin_nonce: u64,
         fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
     ) -> Result<FinalExecutionOutcomeView> {
@@ -99,7 +132,10 @@ impl NearConnector {
             self.token_locker_id_as_str()?.to_string(),
             "sign_transfer".to_string(),
             serde_json::json!({
-                "nonce": origin_nonce.to_string(),
+                "transfer_id": {
+                "origin_chain": ChainKind::Near, // TODO: provide transfer_id instead of only nonce
+                    "origin_nonce": origin_nonce
+                },
                 "fee_recipient": fee_recipient,
                 "fee": fee,
             })
@@ -219,7 +255,7 @@ impl NearConnector {
         let near_endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
-        let tx_id = near_rpc_client::change(
+        let tx_hash = near_rpc_client::change(
             near_endpoint,
             self.signer()?,
             token_locker_id.to_string(),
@@ -231,11 +267,11 @@ impl NearConnector {
         .await?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
+            tx_hash = format!("{:?}", tx_hash),
             "Sent bind token transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
     /// Signs claiming native fee on NEAR chain using the token locker

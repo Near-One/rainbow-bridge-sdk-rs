@@ -5,6 +5,7 @@ use near_connector::NearConnector;
 use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
+use omni_types::Fee;
 use omni_types::{
     locker_args::BindTokenArgs, near_events::Nep141LockerEvent, ChainKind, OmniAddress,
 };
@@ -15,12 +16,10 @@ abigen!(
     BridgeTokenFactory,
     r#"[
       struct MetadataPayload { string token; string name; string symbol; uint8 decimals; }
-      struct FinTransferPayload { uint128 nonce; string token; uint128 amount; address recipient; string feeRecipient; }
-      struct ClaimFeePayload { uint128[] nonces; uint128 amount; address recipient; }
+      struct TransferMessagePayload { uint64 destinationNonce; uint8 originChain; uint64 originNonce; address tokenAddress; uint128 amount; address recipient; string feeRecipient; }
       function deployToken(bytes signatureData, MetadataPayload metadata) external returns (address)
-      function finTransfer(bytes, FinTransferPayload) external
-      function initTransfer(string token, uint128 amount, uint128 fee, uint128 nativeFee, string memory recipient) external
-      function claimNativeFee(bytes calldata signatureData, ClaimFeePayload memory payload) external
+      function finTransfer(bytes, TransferMessagePayload) external
+      function initTransfer(address tokenAddress, uint128 amount, uint128 fee, uint128 nativeFee, string recipient, string message) external
       function nearToEthToken(string nearTokenId) external view returns (address)
     ]"#
 );
@@ -57,7 +56,7 @@ impl EvmConnector {
 
     /// Deploys an ERC-20 token that will be used when bridging NEP-141 tokens to EVM. Requires a receipt from log_metadata transaction on Near
     #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN")]
-    pub async fn evm_deploy_token(
+    pub async fn deploy_token(
         &self,
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
@@ -67,17 +66,14 @@ impl EvmConnector {
             .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
             .await?;
 
-        self.evm_deploy_token_with_log(
+        self.deploy_token_with_log(
             serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
         )
         .await
     }
 
     #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN WITH LOG")]
-    pub async fn evm_deploy_token_with_log(
-        &self,
-        transfer_log: Nep141LockerEvent,
-    ) -> Result<TxHash> {
+    pub async fn deploy_token_with_log(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
         let factory = self.bridge_token_factory()?;
 
         let Nep141LockerEvent::LogMetadataEvent {
@@ -114,7 +110,7 @@ impl EvmConnector {
 
     /// Mints the corresponding bridged tokens on EVM. Requires an MPC signature
     #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
-    pub async fn evm_fin_transfer(
+    pub async fn fin_transfer(
         &self,
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
@@ -124,17 +120,14 @@ impl EvmConnector {
             .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
             .await?;
 
-        self.evm_fin_transfer_with_log(
+        self.fin_transfer_with_log(
             serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
         )
         .await
     }
 
     #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER WITH LOG")]
-    pub async fn evm_fin_transfer_with_log(
-        &self,
-        transfer_log: Nep141LockerEvent,
-    ) -> Result<TxHash> {
+    pub async fn fin_transfer_with_log(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
         let factory = self.bridge_token_factory()?;
 
         let Nep141LockerEvent::SignTransferEvent {
@@ -145,9 +138,14 @@ impl EvmConnector {
             return Err(BridgeSdkError::UnknownError);
         };
 
-        let bridge_deposit = FinTransferPayload {
-            nonce: message_payload.nonce.into(),
-            token: message_payload.token.to_string(),
+        let bridge_deposit = TransferMessagePayload {
+            destination_nonce: message_payload.destination_nonce,
+            origin_chain: message_payload.transfer_id.origin_chain as u8,
+            origin_nonce: message_payload.transfer_id.origin_nonce,
+            token_address: match message_payload.token_address {
+                OmniAddress::Eth(address) => address.0.into(),
+                _ => return Err(BridgeSdkError::UnknownError),
+            },
             amount: message_payload.amount.into(),
             recipient: match message_payload.recipient {
                 OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
@@ -173,11 +171,12 @@ impl EvmConnector {
 
     /// Burns bridged tokens on EVM. The proof from this transaction is then used to withdraw the corresponding tokens on Near
     #[tracing::instrument(skip_all, name = "EVM INIT TRANSFER")]
-    pub async fn evm_init_transfer(
+    pub async fn init_transfer(
         &self,
         near_token_id: String,
         amount: u128,
         receiver: String,
+        fee: Fee,
     ) -> Result<TxHash> {
         let factory = self.bridge_token_factory()?;
 
@@ -212,8 +211,14 @@ impl EvmConnector {
             tracing::debug!("Approved tokens for spending");
         }
 
-        // TODO: Provide fee and nativeFee
-        let withdraw_call = factory.init_transfer(near_token_id, amount, 0, 0, receiver);
+        let withdraw_call = factory.init_transfer(
+            erc20_address,
+            amount,
+            fee.fee.into(),
+            fee.native_fee.into(),
+            receiver,
+            String::new(),
+        );
         let tx = withdraw_call.send().await?;
 
         tracing::info!(
@@ -234,7 +239,7 @@ impl EvmConnector {
 
         let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, endpoint).await?;
 
-        let evm_verify_proof_args = EvmVerifyProofArgs {
+        let verify_proof_args = EvmVerifyProofArgs {
             proof_kind: ProofKind::DeployToken,
             proof,
         };
@@ -242,74 +247,11 @@ impl EvmConnector {
         self.near_connector()?
             .bind_token(BindTokenArgs {
                 chain_kind: ChainKind::Eth,
-                prover_args: borsh::to_vec(&evm_verify_proof_args).map_err(|_| {
+                prover_args: borsh::to_vec(&verify_proof_args).map_err(|_| {
                     BridgeSdkError::EthProofError("Failed to serialize proof".to_string())
                 })?,
             })
             .await
-    }
-
-    /// Claims fee on EVM chain
-    #[tracing::instrument(skip_all, name = "EVM CLAIM NATIVE FEE")]
-    pub async fn evm_claim_native_fee(
-        &self,
-        transaction_hash: CryptoHash,
-        sender_id: Option<AccountId>,
-    ) -> Result<TxHash> {
-        let transfer_log = self
-            .near_connector()?
-            .extract_transfer_log(transaction_hash, sender_id, "SignClaimNativeFeeEvent")
-            .await?;
-
-        self.evm_claim_native_fee_with_log(
-            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-        )
-        .await
-    }
-
-    #[tracing::instrument(skip_all, name = "EVM CLAIM NATIVE FEE WITH LOG")]
-    pub async fn evm_claim_native_fee_with_log(
-        &self,
-        transfer_log: Nep141LockerEvent,
-    ) -> Result<TxHash> {
-        let factory = self.bridge_token_factory()?;
-
-        let Nep141LockerEvent::SignClaimNativeFeeEvent {
-            signature,
-            claim_payload,
-        } = transfer_log
-        else {
-            return Err(BridgeSdkError::UnknownError);
-        };
-
-        let (OmniAddress::Eth(recipient)
-        | OmniAddress::Base(recipient)
-        | OmniAddress::Arb(recipient)) = claim_payload.recipient
-        else {
-            return Err(BridgeSdkError::UnknownError);
-        };
-
-        let payload = ClaimFeePayload {
-            nonces: claim_payload.nonces.into_iter().map(Into::into).collect(),
-            amount: claim_payload.amount.into(),
-            recipient: H160(recipient.0),
-        };
-
-        let serialized_signature = signature.to_bytes();
-
-        assert!(serialized_signature.len() == 65);
-
-        let call = factory
-            .claim_native_fee(serialized_signature.into(), payload)
-            .gas(500_000);
-        let tx = call.send().await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent claim native fee transaction"
-        );
-
-        Ok(tx.tx_hash())
     }
 
     fn endpoint(&self) -> Result<&str> {

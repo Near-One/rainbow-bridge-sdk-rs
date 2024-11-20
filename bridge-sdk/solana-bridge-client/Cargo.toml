@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 borsh.workspace = true
+sha2.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
 mpl-token-metadata.workspace = true

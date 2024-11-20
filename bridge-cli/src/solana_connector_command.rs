@@ -1,12 +1,15 @@
 use clap::Subcommand;
 use near_connector::NearConnectorBuilder;
 use solana_connector::{SolanaConnector, SolanaConnectorBuilder};
+use solana_sdk::signature::Keypair;
 
 use crate::{combined_config, CliConfig, Network};
 
 #[derive(Subcommand, Debug)]
 pub enum SolanaConnectorSubCommand {
     Initialize {
+        #[clap(short, long)]
+        program_keypair: Vec<u8>,
         #[command(flatten)]
         config_cli: CliConfig,
     },
@@ -23,16 +26,26 @@ pub enum SolanaConnectorSubCommand {
         transaction_hash: String,
         #[clap(short, long)]
         sender_id: Option<String>,
+        #[clap(short, long)]
+        solana_token: String,
         #[command(flatten)]
         config_cli: CliConfig,
     },
-    RegisterToken {
+    FinalizeTransferSol {
+        #[clap(short, long)]
+        transaction_hash: String,
+        #[clap(short, long)]
+        sender_id: Option<String>,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    LogMetadata {
         #[clap(short, long)]
         token: String,
         #[command(flatten)]
         config_cli: CliConfig,
     },
-    InitTransferNative {
+    InitTransfer {
         #[clap(short, long)]
         token: String,
         #[clap(short, long)]
@@ -42,9 +55,7 @@ pub enum SolanaConnectorSubCommand {
         #[command(flatten)]
         config_cli: CliConfig,
     },
-    InitTransferBridged {
-        #[clap(short, long)]
-        token: String,
+    InitTransferSol {
         #[clap(short, long)]
         amount: u128,
         #[clap(short, long)]
@@ -56,9 +67,12 @@ pub enum SolanaConnectorSubCommand {
 
 pub async fn match_subcommand(cmd: SolanaConnectorSubCommand, network: Network) {
     match cmd {
-        SolanaConnectorSubCommand::Initialize { config_cli } => {
+        SolanaConnectorSubCommand::Initialize {
+            program_keypair,
+            config_cli,
+        } => {
             solana_connector(network, config_cli)
-                .initialize()
+                .initialize(Keypair::from_bytes(&program_keypair).unwrap())
                 .await
                 .unwrap();
         }
@@ -78,41 +92,43 @@ pub async fn match_subcommand(cmd: SolanaConnectorSubCommand, network: Network) 
         SolanaConnectorSubCommand::FinalizeTransfer {
             transaction_hash,
             sender_id,
+            solana_token,
             config_cli,
         } => {
             solana_connector(network, config_cli)
                 .finalize_transfer(
                     transaction_hash.parse().unwrap(),
+                    solana_token.parse().unwrap(),
                     sender_id.map(|id| id.parse().unwrap()),
                 )
                 .await
                 .unwrap();
         }
-        SolanaConnectorSubCommand::RegisterToken { token, config_cli } => {
+        SolanaConnectorSubCommand::FinalizeTransferSol { .. } => {}
+        SolanaConnectorSubCommand::LogMetadata { token, config_cli } => {
             solana_connector(network, config_cli)
-                .register_token(token.parse().unwrap())
+                .log_metadata(token.parse().unwrap())
                 .await
                 .unwrap();
         }
-        SolanaConnectorSubCommand::InitTransferNative {
+        SolanaConnectorSubCommand::InitTransfer {
             token,
             amount,
             recipient,
             config_cli,
         } => {
             solana_connector(network, config_cli)
-                .init_transfer_native(token.parse().unwrap(), amount, recipient)
+                .init_transfer(token.parse().unwrap(), amount, recipient)
                 .await
                 .unwrap();
         }
-        SolanaConnectorSubCommand::InitTransferBridged {
-            token,
+        SolanaConnectorSubCommand::InitTransferSol {
             amount,
             recipient,
             config_cli,
         } => {
             solana_connector(network, config_cli)
-                .init_transfer_bridged(token, amount, recipient)
+                .init_transfer_sol(amount, recipient)
                 .await
                 .unwrap();
         }

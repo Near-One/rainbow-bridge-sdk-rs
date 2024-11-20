@@ -14,6 +14,7 @@ serde_json.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
 omni-types.workspace = true
+solana-sdk.workspace = true
 nep141-connector = { path = "../bridge-sdk/connectors/nep141-connector" }
 eth-connector = { path = "../bridge-sdk/connectors/eth-connector" }
 evm-connector = { path = "../bridge-sdk/connectors/evm-connector" }

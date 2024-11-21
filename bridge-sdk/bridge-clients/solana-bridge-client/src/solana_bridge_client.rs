@@ -10,6 +10,9 @@ use solana_sdk::{
     transaction::Transaction,
 };
 
+mod error;
+mod instructions;
+
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct MetadataPayload {
     pub token: String,
@@ -51,6 +54,7 @@ pub struct WormholeSequence {
     pub sequence: u64,
 }
 
+#[derive(Builder, Clone)]
 pub struct SolanaBridgeClient {
     client: RpcClient,
     program_id: Pubkey,

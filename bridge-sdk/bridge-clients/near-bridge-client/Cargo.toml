@@ -1,5 +1,5 @@
 [package]
-name = "near-connector"
+name = "near-bridge-client"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,7 +15,7 @@ omni-types.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 near-rpc-client = { path = "../../near-rpc-client" }
-bridge-connector-common = { path = "../bridge-connector-common" }
+bridge-connector-common = { path = "../../connectors/bridge-connector-common" }
 
 [lib]
-path = "src/near_connector.rs"
+path = "src/near_bridge_client.rs"

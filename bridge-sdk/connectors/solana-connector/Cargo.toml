@@ -13,7 +13,7 @@ serde_json.workspace = true
 solana-sdk.workspace = true
 tracing.workspace = true
 near-rpc-client = { path = "../../near-rpc-client" }
-solana-bridge-client = { path = "../../solana-bridge-client" }
+solana-bridge-client = { path = "../../bridge-clients/solana-bridge-client" }
 bridge-connector-common = { path = "../bridge-connector-common" }
 near-connector = { path = "../near-connector" }
 

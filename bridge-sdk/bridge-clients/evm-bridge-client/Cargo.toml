@@ -1,11 +1,14 @@
 [package]
-name = "near-connector"
+name = "evm-bridge-client"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+sha3.workspace = true
 borsh.workspace = true
+ethers.workspace = true
 derive_builder.workspace = true
+hex.workspace = true
 near-crypto.workspace = true
 near-jsonrpc-client.workspace = true
 near-primitives.workspace = true
@@ -14,8 +17,10 @@ near-contract-standards.workspace = true
 omni-types.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
-bridge-connector-common = { path = "../bridge-connector-common" }
+bridge-connector-common = { path = "../../connectors/bridge-connector-common" }
+near-bridge-client = { path = "../near-bridge-client" }
 
 [lib]
-path = "src/near_connector.rs"
+path = "src/evm_bridge_client.rs"

@@ -3,8 +3,11 @@ use std::{str::FromStr, sync::Arc};
 use bridge_connector_common::result::{BridgeSdkError, Result};
 use derive_builder::Builder;
 use ethers::{abi::Address, prelude::*};
+use omni_types::prover_args::EvmProof;
+use omni_types::prover_result::ProofKind;
 use omni_types::Fee;
 use omni_types::{near_events::Nep141LockerEvent, OmniAddress};
+use sha3::{Digest, Keccak256};
 
 abigen!(
     BridgeTokenFactory,
@@ -45,26 +48,9 @@ impl EvmBridgeClient {
         Self::default()
     }
 
-    ///// Deploys an ERC-20 token that will be used when bridging NEP-141 tokens to EVM. Requires a receipt from log_metadata transaction on Near
-    //#[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN")]
-    //pub async fn deploy_token(
-    //    &self,
-    //    transaction_hash: CryptoHash,
-    //    sender_id: Option<AccountId>,
-    //) -> Result<TxHash> {
-    //    let transfer_log = self
-    //        .near_connector()?
-    //        .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
-    //        .await?;
-    //
-    //    self.deploy_token_with_log(
-    //        serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-    //    )
-    //    .await
-    //}
-
-    #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN WITH LOG")]
-    pub async fn deploy_token_with_log(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
+    /// Deploys an ERC-20 token representing a bridged version of a token from another chain. Requires a receipt from log_metadata transaction on Near
+    #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN")]
+    pub async fn deploy_token(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
         let factory = self.bridge_token_factory()?;
 
         let Nep141LockerEvent::LogMetadataEvent {
@@ -99,26 +85,9 @@ impl EvmBridgeClient {
         Ok(tx.tx_hash())
     }
 
-    ///// Mints the corresponding bridged tokens on EVM. Requires an MPC signature
-    //#[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
-    //pub async fn fin_transfer(
-    //    &self,
-    //    transaction_hash: CryptoHash,
-    //    sender_id: Option<AccountId>,
-    //) -> Result<TxHash> {
-    //    let transfer_log = self
-    //        .near_connector()?
-    //        .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
-    //        .await?;
-    //
-    //    self.fin_transfer_with_log(
-    //        serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-    //    )
-    //    .await
-    //}
-
-    #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER WITH LOG")]
-    pub async fn fin_transfer_with_log(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
+    /// Mints the corresponding bridged tokens on EVM. Requires an MPC signature
+    #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
+    pub async fn fin_transfer(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
         let factory = self.bridge_token_factory()?;
 
         let Nep141LockerEvent::SignTransferEvent {
@@ -220,30 +189,23 @@ impl EvmBridgeClient {
         Ok(tx.tx_hash())
     }
 
-    //pub async fn bind_token_with_eth_prover(&self, tx_hash: TxHash) -> Result<CryptoHash> {
-    //    let endpoint = self.endpoint()?;
-    //
-    //    let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
-    //        "DeployToken(address,string,string,string,uint8)".as_bytes(),
-    //    )))
-    //    .map_err(|_| BridgeSdkError::UnknownError)?;
-    //
-    //    let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, endpoint).await?;
-    //
-    //    let verify_proof_args = EvmVerifyProofArgs {
-    //        proof_kind: ProofKind::DeployToken,
-    //        proof,
-    //    };
-    //
-    //    self.near_connector()?
-    //        .bind_token(BindTokenArgs {
-    //            chain_kind: ChainKind::Eth,
-    //            prover_args: borsh::to_vec(&verify_proof_args).map_err(|_| {
-    //                BridgeSdkError::EthProofError("Failed to serialize proof".to_string())
-    //            })?,
-    //        })
-    //        .await
-    //}
+    pub async fn get_proof_for_event(&self, tx_hash: TxHash, proof_kind: ProofKind) -> Result<EvmProof> {
+        let endpoint = self.endpoint()?;
+
+        let event_signature = match proof_kind {
+            ProofKind::DeployToken => "DeployToken(address,string,string,string,uint8)",
+            ProofKind::InitTransfer => "InitTransfer(address,address,uint64,uint128,uint128,uint128,string,string)",
+            ProofKind::FinTransfer => "FinTransfer(uint8,uint64,address,uint128,address,string)",
+            ProofKind::LogMetadata => "LogMetadata(address,string,string,uint8)",
+        };
+        let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
+            event_signature.as_bytes(),
+        ))).map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, endpoint).await?;
+
+        Ok(proof)
+    }
 
     fn endpoint(&self) -> Result<&str> {
         Ok(self.endpoint.as_ref().ok_or(BridgeSdkError::ConfigError(

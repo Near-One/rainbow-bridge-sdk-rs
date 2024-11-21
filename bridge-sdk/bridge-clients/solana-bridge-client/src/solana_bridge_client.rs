@@ -1,5 +1,6 @@
 use crate::{error::SolanaClientError, instructions::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use derive_builder::Builder;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -54,7 +55,8 @@ pub struct WormholeSequence {
     pub sequence: u64,
 }
 
-#[derive(Builder, Clone)]
+#[derive(Builder)]
+#[builder(pattern = "owned")]
 pub struct SolanaBridgeClient {
     client: RpcClient,
     program_id: Pubkey,

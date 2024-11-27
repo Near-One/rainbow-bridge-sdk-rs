@@ -5314,6 +5314,7 @@ dependencies = [
  "sha3 0.10.8",
  "solana-bridge-client",
  "tracing",
+ "wormhole-bridge-client",
 ]
 
 [[package]]
@@ -10431,6 +10432,19 @@ checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
 dependencies = [
  "cfg-if 1.0.0",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "wormhole-bridge-client"
+version = "0.1.0"
+dependencies = [
+ "bridge-connector-common",
+ "derive_builder",
+ "hex",
+ "near-primitives",
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

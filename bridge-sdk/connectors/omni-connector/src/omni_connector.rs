@@ -7,8 +7,8 @@ use near_primitives::views::FinalExecutionOutcomeView;
 use omni_types::locker_args::{ClaimFeeArgs, StorageDepositArgs};
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
-use omni_types::Fee;
 use omni_types::{locker_args::BindTokenArgs, near_events::Nep141LockerEvent, ChainKind};
+use omni_types::{Fee, OmniAddress};
 
 use evm_bridge_client::EvmBridgeClient;
 use near_bridge_client::NearBridgeClient;
@@ -146,6 +146,17 @@ impl OmniConnector {
     ) -> Result<FinalExecutionOutcomeView> {
         let near_bridge_client = self.near_bridge_client()?;
         near_bridge_client.claim_fee(claim_fee_args).await
+    }
+
+    pub async fn near_sign_claim_native_fee(
+        &self,
+        nonces: Vec<u128>,
+        recipient: OmniAddress,
+    ) -> Result<FinalExecutionOutcomeView> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .sign_claim_native_fee(nonces, recipient)
+            .await
     }
 
     pub async fn init_transfer(&self, init_transfer_args: InitTransferArgs) -> Result<String> {

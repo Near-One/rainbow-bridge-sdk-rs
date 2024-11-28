@@ -2,6 +2,8 @@ use bridge_connector_common::result::{BridgeSdkError, Result};
 use derive_builder::Builder;
 use ethers::prelude::*;
 use near_primitives::hash::CryptoHash;
+use near_primitives::types::AccountId;
+use near_primitives::views::FinalExecutionOutcomeView;
 use omni_types::locker_args::StorageDepositArgs;
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
@@ -126,6 +128,19 @@ impl OmniConnector {
             .await
     }
 
+    pub async fn near_sign_transfer(
+        &self,
+        origin_nonce: u64,
+        fee_recipient: Option<AccountId>,
+        fee: Option<Fee>,
+    ) -> Result<FinalExecutionOutcomeView> {
+        let near_bridge_client = self.near_bridge_client()?;
+
+        near_bridge_client
+            .sign_transfer(origin_nonce, fee_recipient, fee)
+            .await
+    }
+
     pub async fn init_transfer(&self, init_transfer_args: InitTransferArgs) -> Result<String> {
         match init_transfer_args {
             InitTransferArgs::NearInitTransfer {
@@ -200,7 +215,7 @@ impl OmniConnector {
             .await
     }
 
-    fn near_bridge_client(&self) -> Result<&NearBridgeClient> {
+    pub fn near_bridge_client(&self) -> Result<&NearBridgeClient> {
         self.near_bridge_client
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
@@ -208,7 +223,7 @@ impl OmniConnector {
             ))
     }
 
-    fn evm_bridge_client(&self, chain_kind: ChainKind) -> Result<&EvmBridgeClient> {
+    pub fn evm_bridge_client(&self, chain_kind: ChainKind) -> Result<&EvmBridgeClient> {
         let bridge_client = match chain_kind {
             ChainKind::Base => self.base_bridge_client.as_ref(),
             ChainKind::Arb => self.arb_bridge_client.as_ref(),
@@ -221,7 +236,7 @@ impl OmniConnector {
         ))
     }
 
-    fn wormhole_bridge_client(&self) -> Result<&WormholeBridgeClient> {
+    pub fn wormhole_bridge_client(&self) -> Result<&WormholeBridgeClient> {
         self.wormhole_bridge_client
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(

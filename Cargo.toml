@@ -43,7 +43,7 @@ tracing-subscriber = "0.3"
 base64 = "0.22"
 near-token = "0.3"
 near-contract-standards = "5.5"
-omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "303ca7bc7cdb39c4a356b65b10221259a632ac54" }
+omni-types = { git = "https://github.com/near-one/omni-bridge", package = "omni-types", rev = "11ffdb63706ceba175f7581585bd837aad9f1559" }
 solana-sdk = "2.0.13"
 solana-client = "2.0.13"
 spl-token = "7.0.0"

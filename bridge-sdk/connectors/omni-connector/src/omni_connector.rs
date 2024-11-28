@@ -4,7 +4,7 @@ use ethers::prelude::*;
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::AccountId;
 use near_primitives::views::FinalExecutionOutcomeView;
-use omni_types::locker_args::{ClaimFeeArgs, StorageDepositArgs};
+use omni_types::locker_args::{ClaimFeeArgs, StorageDepositAction};
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
 use omni_types::{locker_args::BindTokenArgs, near_events::Nep141LockerEvent, ChainKind};
@@ -45,7 +45,7 @@ pub enum InitTransferArgs {
 pub enum FinTransferArgs {
     NearFinTransfer {
         chain_kind: ChainKind,
-        storage_deposit_args: StorageDepositArgs,
+        storage_deposit_actions: Vec<StorageDepositAction>,
         prover_args: Vec<u8>,
     },
     EvmFinTransfer {
@@ -190,14 +190,14 @@ impl OmniConnector {
         match fin_transfer_args {
             FinTransferArgs::NearFinTransfer {
                 chain_kind,
-                storage_deposit_args,
+                storage_deposit_actions,
                 prover_args,
             } => self
                 .near_bridge_client()
                 .map_err(|_| BridgeSdkError::UnknownError)?
                 .fin_transfer(omni_types::locker_args::FinTransferArgs {
                     chain_kind,
-                    storage_deposit_args,
+                    storage_deposit_actions,
                     prover_args,
                 })
                 .await

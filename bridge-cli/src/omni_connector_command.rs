@@ -68,11 +68,13 @@ pub enum OmniConnectorSubCommand {
     },
     NearFinTransfer {
         #[clap(short, long)]
-        token: String,
+        token_id: String,
+        #[clap(short, long)]
+        account_id: String,
+        #[clap(short, long)]
+        storage_deposit_amount: Option<u128>,
         #[clap(short, long)]
         source_chain_id: u8,
-        #[clap(short, long)]
-        receiver: String,
         #[clap(short, long)]
         vaa: String,
         #[command(flatten)]
@@ -227,9 +229,10 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
                 .unwrap();
         }
         OmniConnectorSubCommand::NearFinTransfer {
-            token,
+            token_id,
+            account_id,
+            storage_deposit_amount,
             source_chain_id,
-            receiver,
             vaa,
             config_cli,
         } => {
@@ -242,10 +245,11 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
                 .unwrap()
                 .fin_transfer(FinTransferArgs {
                     chain_kind: ChainKind::try_from(source_chain_id).unwrap(),
-                    storage_deposit_args: omni_types::locker_args::StorageDepositArgs {
-                        token: AccountId::from_str(&token).unwrap(),
-                        accounts: vec![(AccountId::from_str(&receiver).unwrap(), true)],
-                    },
+                    storage_deposit_actions: vec![omni_types::locker_args::StorageDepositAction {
+                        token_id: AccountId::from_str(&token_id).unwrap(),
+                        account_id: AccountId::from_str(&account_id).unwrap(),
+                        storage_deposit_amount,
+                    }],
                     prover_args: near_primitives::borsh::to_vec(&args).unwrap(),
                 })
                 .await

@@ -4,7 +4,7 @@ use ethers::prelude::*;
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::AccountId;
 use near_primitives::views::FinalExecutionOutcomeView;
-use omni_types::locker_args::StorageDepositArgs;
+use omni_types::locker_args::{ClaimFeeArgs, StorageDepositArgs};
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
 use omni_types::Fee;
@@ -135,10 +135,17 @@ impl OmniConnector {
         fee: Option<Fee>,
     ) -> Result<FinalExecutionOutcomeView> {
         let near_bridge_client = self.near_bridge_client()?;
-
         near_bridge_client
             .sign_transfer(origin_nonce, fee_recipient, fee)
             .await
+    }
+
+    pub async fn near_claim_fee(
+        &self,
+        claim_fee_args: ClaimFeeArgs,
+    ) -> Result<FinalExecutionOutcomeView> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.claim_fee(claim_fee_args).await
     }
 
     pub async fn init_transfer(&self, init_transfer_args: InitTransferArgs) -> Result<String> {

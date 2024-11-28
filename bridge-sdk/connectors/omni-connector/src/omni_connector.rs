@@ -1,18 +1,12 @@
-use std::{str::FromStr, sync::Arc};
-
 use bridge_connector_common::result::{BridgeSdkError, Result};
 use derive_builder::Builder;
-use ethers::{abi::Address, prelude::*};
-use near_connector::NearConnector;
-use near_primitives::{hash::CryptoHash, types::AccountId};
+use ethers::prelude::*;
+use near_primitives::hash::CryptoHash;
 use omni_types::locker_args::StorageDepositArgs;
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
 use omni_types::Fee;
-use omni_types::{
-    locker_args::BindTokenArgs, near_events::Nep141LockerEvent, ChainKind, OmniAddress,
-};
-use sha3::{Digest, Keccak256};
+use omni_types::{locker_args::BindTokenArgs, near_events::Nep141LockerEvent, ChainKind};
 
 use evm_bridge_client::EvmBridgeClient;
 use near_bridge_client::NearBridgeClient;
@@ -23,7 +17,9 @@ use wormhole_bridge_client::WormholeBridgeClient;
 #[builder(pattern = "owned")]
 pub struct OmniConnector {
     near_bridge_client: Option<NearBridgeClient>,
-    evm_bridge_client: Option<EvmBridgeClient>,
+    eth_bridge_client: Option<EvmBridgeClient>,
+    base_bridge_client: Option<EvmBridgeClient>,
+    arb_bridge_client: Option<EvmBridgeClient>,
     solana_bridge_client: Option<SolanaBridgeClient>,
     wormhole_bridge_client: Option<WormholeBridgeClient>,
 }
@@ -36,6 +32,7 @@ pub enum InitTransferArgs {
         receiver: String,
     },
     EvmInitTransfer {
+        chain_kind: ChainKind,
         near_token_id: String,
         amount: u128,
         receiver: String,
@@ -50,9 +47,11 @@ pub enum FinTransferArgs {
         prover_args: Vec<u8>,
     },
     EvmFinTransfer {
+        chain_kind: ChainKind,
         event: Nep141LockerEvent,
     },
     EvmFinTransferWithLog {
+        chain_kind: ChainKind,
         near_tx_hash: CryptoHash,
     },
 }
@@ -62,9 +61,13 @@ impl OmniConnector {
         Self::default()
     }
 
-    pub async fn evm_deploy_token(&self, near_tx_hash: CryptoHash) -> Result<TxHash> {
+    pub async fn evm_deploy_token(
+        &self,
+        chain_kind: ChainKind,
+        near_tx_hash: CryptoHash,
+    ) -> Result<TxHash> {
         let near_bridge_client = self.near_bridge_client()?;
-        let evm_bridge_client = self.evm_bridge_client()?;
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
 
         let transfer_log = near_bridge_client
             .extract_transfer_log(near_tx_hash, None, "LogMetadataEvent")
@@ -77,8 +80,12 @@ impl OmniConnector {
             .await
     }
 
-    pub async fn evm_fin_transfer(&self, near_tx_hash: CryptoHash) -> Result<TxHash> {
-        let evm_bridge_client = self.evm_bridge_client()?;
+    pub async fn evm_fin_transfer(
+        &self,
+        chain_kind: ChainKind,
+        near_tx_hash: CryptoHash,
+    ) -> Result<TxHash> {
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
         let near_bridge_client = self.near_bridge_client()?;
 
         let transfer_log = near_bridge_client
@@ -92,9 +99,13 @@ impl OmniConnector {
             .await
     }
 
-    pub async fn near_bind_token_with_evm_proof(&self, tx_hash: TxHash) -> Result<CryptoHash> {
+    pub async fn near_bind_token_with_evm_proof(
+        &self,
+        chain_kind: ChainKind,
+        tx_hash: TxHash,
+    ) -> Result<CryptoHash> {
         let near_bridge_client = self.near_bridge_client()?;
-        let evm_bridge_client = self.evm_bridge_client()?;
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
 
         let proof = evm_bridge_client
             .get_proof_for_event(tx_hash, ProofKind::DeployToken)
@@ -128,12 +139,13 @@ impl OmniConnector {
                 .await
                 .map(|tx_hash| tx_hash.to_string()),
             InitTransferArgs::EvmInitTransfer {
+                chain_kind,
                 near_token_id,
                 amount,
                 receiver,
                 fee,
             } => self
-                .evm_bridge_client()
+                .evm_bridge_client(chain_kind)
                 .map_err(|_| BridgeSdkError::UnknownError)?
                 .init_transfer(near_token_id, amount, receiver, fee)
                 .await
@@ -157,14 +169,17 @@ impl OmniConnector {
                 })
                 .await
                 .map(|tx_hash| tx_hash.to_string()),
-            FinTransferArgs::EvmFinTransfer { event } => self
-                .evm_bridge_client()
+            FinTransferArgs::EvmFinTransfer { chain_kind, event } => self
+                .evm_bridge_client(chain_kind)
                 .map_err(|_| BridgeSdkError::UnknownError)?
                 .fin_transfer(event)
                 .await
                 .map(|tx_hash| tx_hash.to_string()),
-            FinTransferArgs::EvmFinTransferWithLog { near_tx_hash } => self
-                .evm_fin_transfer(near_tx_hash)
+            FinTransferArgs::EvmFinTransferWithLog {
+                chain_kind,
+                near_tx_hash,
+            } => self
+                .evm_fin_transfer(chain_kind, near_tx_hash)
                 .await
                 .map(|tx_hash| tx_hash.to_string()),
         }
@@ -193,12 +208,17 @@ impl OmniConnector {
             ))
     }
 
-    fn evm_bridge_client(&self) -> Result<&EvmBridgeClient> {
-        self.evm_bridge_client
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "EVM bridge client not configured".to_string(),
-            ))
+    fn evm_bridge_client(&self, chain_kind: ChainKind) -> Result<&EvmBridgeClient> {
+        let bridge_client = match chain_kind {
+            ChainKind::Base => self.base_bridge_client.as_ref(),
+            ChainKind::Arb => self.arb_bridge_client.as_ref(),
+            ChainKind::Eth => self.eth_bridge_client.as_ref(),
+            _ => unreachable!("Unsupported chain kind"),
+        };
+
+        bridge_client.ok_or(BridgeSdkError::ConfigError(
+            "EVM bridge client not configured".to_string(),
+        ))
     }
 
     fn wormhole_bridge_client(&self) -> Result<&WormholeBridgeClient> {

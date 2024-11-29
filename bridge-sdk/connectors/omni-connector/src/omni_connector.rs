@@ -4,6 +4,7 @@ use ethers::prelude::*;
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::AccountId;
 use near_primitives::views::FinalExecutionOutcomeView;
+use near_token::NearToken;
 use omni_types::locker_args::{ClaimFeeArgs, StorageDepositAction};
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
@@ -156,6 +157,17 @@ impl OmniConnector {
         let near_bridge_client = self.near_bridge_client()?;
         near_bridge_client
             .sign_claim_native_fee(nonces, recipient)
+            .await
+    }
+
+    pub async fn near_get_required_storage_deposit(
+        &self,
+        token_id: AccountId,
+        account_id: AccountId,
+    ) -> Result<u128> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .get_required_storage_deposit(token_id, account_id)
             .await
     }
 

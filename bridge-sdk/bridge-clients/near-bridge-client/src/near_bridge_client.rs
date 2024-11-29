@@ -31,17 +31,19 @@ pub struct NearBridgeClient {
 impl NearBridgeClient {
     /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on other chains
     #[tracing::instrument(skip_all, name = "LOG METADATA")]
-    pub async fn log_token_metadata(&self, near_token_id: String) -> Result<CryptoHash> {
-        let near_endpoint = self.endpoint()?;
-
-        let args = format!(r#"{{"token_id":"{near_token_id}"}}"#).into_bytes();
+    pub async fn log_token_metadata(&self, token_id: String) -> Result<CryptoHash> {
+        let endpoint = self.endpoint()?;
 
         let tx_hash = near_rpc_client::change(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             self.token_locker_id_as_str()?.to_string(),
             "log_metadata".to_string(),
-            args,
+            serde_json::json!({
+                "token_id": token_id
+            })
+            .to_string()
+            .into_bytes(),
             300_000_000_000_000,
             200_000_000_000_000_000_000_000,
         )
@@ -56,20 +58,22 @@ impl NearBridgeClient {
     #[tracing::instrument(skip_all, name = "STORAGE DEPOSIT")]
     pub async fn storage_deposit_for_token(
         &self,
-        near_token_id: String,
+        token_id: String,
         amount: u128,
     ) -> Result<CryptoHash> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker = self.token_locker_id_as_str()?;
 
-        let args = format!(r#"{{"account_id":"{token_locker}"}}"#).into_bytes();
-
         let tx_hash = near_rpc_client::change(
-            near_endpoint,
+            endpoint,
             self.signer()?,
-            near_token_id,
+            token_id,
             "storage_deposit".to_string(),
-            args,
+            serde_json::json!({
+                "account_id": token_locker
+            })
+            .to_string()
+            .into_bytes(),
             300_000_000_000_000,
             amount,
         )
@@ -125,10 +129,10 @@ impl NearBridgeClient {
         fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
     ) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
 
         let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             self.token_locker_id_as_str()?.to_string(),
             "sign_transfer".to_string(),
@@ -159,18 +163,18 @@ impl NearBridgeClient {
     #[tracing::instrument(skip_all, name = "NEAR INIT TRANSFER")]
     pub async fn init_transfer(
         &self,
-        near_token_id: String,
+        token_id: String,
         amount: u128,
         receiver: String,
     ) -> Result<CryptoHash> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker = self.token_locker_id_as_str()?;
 
         let required_balance = self
             .get_required_balance_for_init_transfer(&receiver, self.account_id()?.as_str())
             .await?
             + self.get_required_balance_for_account().await?;
-        let existing_balance = self.get_storage_balance().await?;
+        let existing_balance = self.get_storage_balance(self.account_id()?).await?;
 
         if existing_balance < required_balance {
             self.storage_deposit(required_balance - existing_balance)
@@ -178,16 +182,24 @@ impl NearBridgeClient {
         }
 
         let fee = 0;
-        let args =
-            format!(r#"{{"receiver_id":"{token_locker}","amount":"{amount}","msg":"{{\"recipient\":\"{receiver}\",\"fee\":\"{fee}\",\"native_token_fee\":\"0\"}}"}}"#)
-                .into_bytes();
+        let native_fee = 0;
 
         let tx_hash = near_rpc_client::change(
-            near_endpoint,
+            endpoint,
             self.signer()?,
-            near_token_id,
+            token_id,
             "ft_transfer_call".to_string(),
-            args,
+            serde_json::json!({
+                "receiver_id": token_locker,
+                "amount": amount.to_string(),
+                "msg": serde_json::json!({
+                    "recipient": receiver,
+                    "fee": fee,
+                    "native_token_fee": native_fee
+                })
+            })
+            .to_string()
+            .into_bytes(),
             300_000_000_000_000,
             1,
         )
@@ -204,10 +216,10 @@ impl NearBridgeClient {
     /// Withdraws NEP-141 tokens from the token locker. Requires a proof from the burn transaction
     #[tracing::instrument(skip_all, name = "NEAR FIN TRANSFER")]
     pub async fn fin_transfer(&self, args: FinTransferArgs) -> Result<CryptoHash> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
 
         let tx_hash = near_rpc_client::change(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             self.token_locker_id_as_str()?.to_string(),
             "fin_transfer".to_string(),
@@ -228,11 +240,11 @@ impl NearBridgeClient {
     /// Claims fee on NEAR chain using the token locker
     #[tracing::instrument(skip_all, name = "CLAIM FEE")]
     pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
         let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             token_locker_id.to_string(),
             "claim_fee".to_string(),
@@ -253,11 +265,11 @@ impl NearBridgeClient {
     /// Binds token on NEAR chain using the token locker
     #[tracing::instrument(skip_all, name = "BIND TOKEN")]
     pub async fn bind_token(&self, args: BindTokenArgs) -> Result<CryptoHash> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
         let tx_hash = near_rpc_client::change(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             token_locker_id.to_string(),
             "bind_token".to_string(),
@@ -282,11 +294,11 @@ impl NearBridgeClient {
         nonces: Vec<u128>,
         recipient: OmniAddress,
     ) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
         let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             token_locker_id.to_string(),
             "sign_claim_native_fee".to_string(),
@@ -309,16 +321,16 @@ impl NearBridgeClient {
         Ok(outcome)
     }
 
-    pub async fn get_storage_balance(&self) -> Result<u128> {
-        let near_endpoint = self.endpoint()?;
+    pub async fn get_storage_balance(&self, account_id: AccountId) -> Result<u128> {
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
-            near_endpoint,
+            endpoint,
             token_locker_id,
             "storage_balance_of".to_string(),
             serde_json::json!({
-                "account_id": self.account_id()?
+                "account_id": account_id
             }),
         )
         .await?;
@@ -329,11 +341,11 @@ impl NearBridgeClient {
     }
 
     pub async fn get_required_balance_for_account(&self) -> Result<u128> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
-            near_endpoint,
+            endpoint,
             token_locker_id,
             "required_balance_for_account".to_string(),
             serde_json::Value::Null,
@@ -349,11 +361,11 @@ impl NearBridgeClient {
         recipient: &str,
         sender: &str,
     ) -> Result<u128> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
-            near_endpoint,
+            endpoint,
             token_locker_id,
             "required_balance_for_init_transfer".to_string(),
             serde_json::json!({
@@ -363,16 +375,40 @@ impl NearBridgeClient {
         )
         .await?;
 
-        let required_balance: NearToken = serde_json::from_slice(&response)?;
+        let required_balance = serde_json::from_slice::<NearToken>(&response)?;
         Ok(required_balance.as_yoctonear())
     }
 
+    pub async fn get_required_storage_deposit(
+        &self,
+        token_id: AccountId,
+        account_id: AccountId,
+    ) -> Result<u128> {
+        let endpoint = self.endpoint()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_id.clone(),
+            "storage_minimum_balance".to_string(),
+            serde_json::Value::Null,
+        )
+        .await?;
+
+        let storage_minimum_balance = serde_json::from_slice::<NearToken>(&response)?;
+
+        let total_balance = NearToken::from_yoctonear(self.get_storage_balance(account_id).await?);
+
+        Ok(storage_minimum_balance
+            .saturating_sub(total_balance)
+            .as_yoctonear())
+    }
+
     pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
         let tx = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
+            endpoint,
             self.signer()?,
             token_locker_id.to_string(),
             "storage_deposit".to_string(),
@@ -404,19 +440,15 @@ impl NearBridgeClient {
         sender_id: Option<AccountId>,
         event_name: &str,
     ) -> Result<String> {
-        let near_endpoint = self.endpoint()?;
+        let endpoint = self.endpoint()?;
 
         let sender_id = match sender_id {
             Some(id) => id,
             None => self.account_id()?,
         };
-        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
-            transaction_hash,
-            sender_id,
-            near_endpoint,
-            30,
-        )
-        .await?;
+        let sign_tx =
+            near_rpc_client::wait_for_tx_final_outcome(transaction_hash, sender_id, endpoint, 30)
+                .await?;
 
         let transfer_log = sign_tx
             .receipts_outcome

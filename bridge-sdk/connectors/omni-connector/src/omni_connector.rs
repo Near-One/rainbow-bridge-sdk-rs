@@ -4,7 +4,6 @@ use ethers::prelude::*;
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::AccountId;
 use near_primitives::views::FinalExecutionOutcomeView;
-use near_token::NearToken;
 use omni_types::locker_args::{ClaimFeeArgs, StorageDepositAction};
 use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
@@ -169,6 +168,11 @@ impl OmniConnector {
         near_bridge_client
             .get_required_storage_deposit(token_id, account_id)
             .await
+    }
+
+    pub async fn near_get_token_id(&self, token_address: OmniAddress) -> Result<AccountId> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.get_token_id(token_address).await
     }
 
     pub async fn init_transfer(&self, init_transfer_args: InitTransferArgs) -> Result<String> {

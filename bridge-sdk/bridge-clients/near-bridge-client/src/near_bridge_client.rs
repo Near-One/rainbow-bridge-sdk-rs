@@ -434,6 +434,25 @@ impl NearBridgeClient {
         Ok(())
     }
 
+    pub async fn get_token_id(&self, token_address: OmniAddress) -> Result<AccountId> {
+        let endpoint = self.endpoint()?;
+        let token_id = self.token_locker_id_as_account_id()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_id,
+            "get_token_id".to_string(),
+            serde_json::json!({
+                "address": token_address
+            }),
+        )
+        .await?;
+
+        let token_id = serde_json::from_slice::<AccountId>(&response)?;
+
+        Ok(token_id)
+    }
+
     pub async fn extract_transfer_log(
         &self,
         transaction_hash: CryptoHash,

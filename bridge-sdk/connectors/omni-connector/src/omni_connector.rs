@@ -52,7 +52,7 @@ pub enum FinTransferArgs {
         chain_kind: ChainKind,
         event: Nep141LockerEvent,
     },
-    EvmFinTransferWithLog {
+    EvmFinTransferWithTxHash {
         chain_kind: ChainKind,
         near_tx_hash: CryptoHash,
     },
@@ -224,7 +224,7 @@ impl OmniConnector {
                 .fin_transfer(event)
                 .await
                 .map(|tx_hash| tx_hash.to_string()),
-            FinTransferArgs::EvmFinTransferWithLog {
+            FinTransferArgs::EvmFinTransferWithTxHash {
                 chain_kind,
                 near_tx_hash,
             } => self

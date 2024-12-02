@@ -103,7 +103,9 @@ impl EvmBridgeClient {
             origin_chain: message_payload.transfer_id.origin_chain as u8,
             origin_nonce: message_payload.transfer_id.origin_nonce,
             token_address: match message_payload.token_address {
-                OmniAddress::Eth(address) => address.0.into(),
+                OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
+                    addr.0.into()
+                }
                 _ => return Err(BridgeSdkError::UnknownError),
             },
             amount: message_payload.amount.into(),
@@ -189,18 +191,24 @@ impl EvmBridgeClient {
         Ok(tx.tx_hash())
     }
 
-    pub async fn get_proof_for_event(&self, tx_hash: TxHash, proof_kind: ProofKind) -> Result<EvmProof> {
+    pub async fn get_proof_for_event(
+        &self,
+        tx_hash: TxHash,
+        proof_kind: ProofKind,
+    ) -> Result<EvmProof> {
         let endpoint = self.endpoint()?;
 
         let event_signature = match proof_kind {
             ProofKind::DeployToken => "DeployToken(address,string,string,string,uint8)",
-            ProofKind::InitTransfer => "InitTransfer(address,address,uint64,uint128,uint128,uint128,string,string)",
+            ProofKind::InitTransfer => {
+                "InitTransfer(address,address,uint64,uint128,uint128,uint128,string,string)"
+            }
             ProofKind::FinTransfer => "FinTransfer(uint8,uint64,address,uint128,address,string)",
             ProofKind::LogMetadata => "LogMetadata(address,string,string,uint8)",
         };
-        let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
-            event_signature.as_bytes(),
-        ))).map_err(|_| BridgeSdkError::UnknownError)?;
+        let event_topic =
+            H256::from_str(&hex::encode(Keccak256::digest(event_signature.as_bytes())))
+                .map_err(|_| BridgeSdkError::UnknownError)?;
 
         let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, endpoint).await?;
 

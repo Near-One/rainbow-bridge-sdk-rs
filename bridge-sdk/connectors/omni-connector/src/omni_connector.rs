@@ -170,6 +170,11 @@ impl OmniConnector {
             .await
     }
 
+    pub async fn near_get_native_token_id(&self, origin_chain: ChainKind) -> Result<AccountId> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.get_native_token_id(origin_chain).await
+    }
+
     pub async fn near_get_token_id(&self, token_address: OmniAddress) -> Result<AccountId> {
         let near_bridge_client = self.near_bridge_client()?;
         near_bridge_client.get_token_id(token_address).await

@@ -467,24 +467,20 @@ fn omni_connector(network: Network, cli_config: CliConfig) -> OmniConnector {
         .unwrap();
 
     let solana_bridge_client = SolanaBridgeClientBuilder::default()
-        .client(RpcClient::new(combined_config.solana_rpc.unwrap()))
+        .client(Some(RpcClient::new(combined_config.solana_rpc.unwrap())))
         .program_id(
             combined_config
                 .solana_bridge_address
-                .unwrap()
-                .parse()
-                .unwrap(),
+                .map(|addr| addr.parse().unwrap()),
         )
         .wormhole_core(
             combined_config
                 .solana_wormhole_address
-                .unwrap()
-                .parse()
-                .unwrap(),
+                .map(|addr| addr.parse().unwrap()),
         )
-        .keypair(Keypair::from_base58_string(
+        .keypair(Some(Keypair::from_base58_string(
             &combined_config.solana_keypair.unwrap(),
-        ))
+        )))
         .build()
         .unwrap();
 

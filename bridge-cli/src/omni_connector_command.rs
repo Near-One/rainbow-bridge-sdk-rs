@@ -1,15 +1,21 @@
-use crate::{combined_config, CliConfig, Network};
+use std::str::FromStr;
+
 use clap::Subcommand;
+
 use ethers_core::types::TxHash;
 use evm_bridge_client::EvmBridgeClientBuilder;
 use near_bridge_client::NearBridgeClientBuilder;
 use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_connector::{
-    BindTokenArgs, DeployTokenArgs, FinTransferArgs, InitTransferArgs, OmniConnector,
-    OmniConnectorBuilder,
+    BindTokenArgs, DeployTokenArgs, FinTransferArgs, InitTransferArgs, LogMetadataArgs,
+    OmniConnector, OmniConnectorBuilder,
 };
 use omni_types::{ChainKind, Fee};
-use std::str::FromStr;
+use solana_bridge_client::SolanaBridgeClientBuilder;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::signature::Keypair;
+
+use crate::{combined_config, CliConfig, Network};
 
 #[derive(Subcommand, Debug)]
 pub enum OmniConnectorSubCommand {
@@ -111,6 +117,63 @@ pub enum OmniConnectorSubCommand {
         config_cli: CliConfig,
     },
 
+    SolanaInitialize {
+        #[clap(short, long)]
+        program_keypair: Vec<u8>,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    SolanaDeployToken {
+        #[clap(short, long)]
+        transaction_hash: String,
+        #[clap(short, long)]
+        sender_id: Option<String>,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    SolanaFinalizeTransfer {
+        #[clap(short, long)]
+        transaction_hash: String,
+        #[clap(short, long)]
+        sender_id: Option<String>,
+        #[clap(short, long)]
+        solana_token: String,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    SolanaFinalizeTransferSol {
+        #[clap(short, long)]
+        transaction_hash: String,
+        #[clap(short, long)]
+        sender_id: Option<String>,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    SolanaLogMetadata {
+        #[clap(short, long)]
+        token: String,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    SolanaInitTransfer {
+        #[clap(short, long)]
+        token: String,
+        #[clap(short, long)]
+        amount: u128,
+        #[clap(short, long)]
+        recipient: String,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+    SolanaInitTransferSol {
+        #[clap(short, long)]
+        amount: u128,
+        #[clap(short, long)]
+        recipient: String,
+        #[command(flatten)]
+        config_cli: CliConfig,
+    },
+
     WormholeBindToken {
         #[clap(short, long)]
         source_chain_id: u8,
@@ -125,7 +188,7 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
     match cmd {
         OmniConnectorSubCommand::NearLogMetadata { token, config_cli } => {
             omni_connector(network, config_cli)
-                .near_log_metadata(token)
+                .log_metadata(LogMetadataArgs::NearLogMetadata { token })
                 .await
                 .unwrap();
         }
@@ -178,7 +241,7 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
         } => {
             omni_connector(network, config_cli)
                 .init_transfer(InitTransferArgs::NearInitTransfer {
-                    token_id: token,
+                    token,
                     amount,
                     receiver,
                 })
@@ -249,7 +312,7 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             omni_connector(network, config_cli)
                 .init_transfer(InitTransferArgs::EvmInitTransfer {
                     chain_kind: ChainKind::try_from(source_chain_id).unwrap(),
-                    near_token_id: token,
+                    token,
                     amount,
                     receiver,
                     fee: Fee {
@@ -273,6 +336,78 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
                 .await
                 .unwrap();
         }
+
+        OmniConnectorSubCommand::SolanaInitialize {
+            program_keypair,
+            config_cli,
+        } => {
+            omni_connector(network, config_cli)
+                .solana_initialize(Keypair::from_bytes(&program_keypair).unwrap())
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SolanaLogMetadata { token, config_cli } => {
+            omni_connector(network, config_cli)
+                .log_metadata(LogMetadataArgs::SolanaLogMetadata {
+                    token: token.parse().unwrap(),
+                })
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SolanaDeployToken {
+            transaction_hash,
+            sender_id,
+            config_cli,
+        } => {
+            omni_connector(network, config_cli)
+                .deploy_token(DeployTokenArgs::SolanaDeployToken {
+                    tx_hash: transaction_hash.parse().unwrap(),
+                    sender_id: sender_id.map(|id| id.parse().unwrap()),
+                })
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SolanaInitTransfer {
+            token,
+            amount,
+            recipient,
+            config_cli,
+        } => {
+            omni_connector(network, config_cli)
+                .init_transfer(InitTransferArgs::SolanaInitTransfer {
+                    token: token.parse().unwrap(),
+                    amount,
+                    recipient,
+                })
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SolanaInitTransferSol {
+            amount,
+            recipient,
+            config_cli,
+        } => {
+            omni_connector(network, config_cli)
+                .init_transfer(InitTransferArgs::SolanaInitTransferSol { amount, recipient })
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SolanaFinalizeTransfer {
+            transaction_hash,
+            sender_id,
+            solana_token,
+            config_cli,
+        } => {
+            omni_connector(network, config_cli)
+                .fin_transfer(FinTransferArgs::SolanaFinTransfer {
+                    tx_hash: transaction_hash.parse().unwrap(),
+                    solana_token: solana_token.parse().unwrap(),
+                    sender_id: sender_id.map(|id| id.parse().unwrap()),
+                })
+                .await
+                .unwrap();
+        }
+        OmniConnectorSubCommand::SolanaFinalizeTransferSol { .. } => {}
 
         OmniConnectorSubCommand::WormholeBindToken {
             source_chain_id,
@@ -331,12 +466,34 @@ fn omni_connector(network: Network, cli_config: CliConfig) -> OmniConnector {
         .build()
         .unwrap();
 
+    let solana_bridge_client = SolanaBridgeClientBuilder::default()
+        .client(RpcClient::new(combined_config.solana_rpc.unwrap()))
+        .program_id(
+            combined_config
+                .solana_bridge_address
+                .unwrap()
+                .parse()
+                .unwrap(),
+        )
+        .wormhole_core(
+            combined_config
+                .solana_wormhole_address
+                .unwrap()
+                .parse()
+                .unwrap(),
+        )
+        .keypair(Keypair::from_base58_string(
+            &combined_config.solana_keypair.unwrap(),
+        ))
+        .build()
+        .unwrap();
+
     OmniConnectorBuilder::default()
         .near_bridge_client(Some(near_bridge_client))
         .eth_bridge_client(Some(eth_bridge_client))
         .base_bridge_client(Some(base_bridge_client))
         .arb_bridge_client(Some(arb_bridge_client))
-        .solana_bridge_client(None)
+        .solana_bridge_client(Some(solana_bridge_client))
         .build()
         .unwrap()
 }

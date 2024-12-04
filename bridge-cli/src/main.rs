@@ -4,7 +4,6 @@ use fast_bridge_command::FastBridgeSubCommand;
 use nep141_connector_command::Nep141ConnectorSubCommand;
 use omni_connector_command::OmniConnectorSubCommand;
 use serde::Deserialize;
-use solana_connector_command::SolanaConnectorSubCommand;
 use std::{env, fs::File, io::BufReader};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{field::MakeExt, fmt::format, EnvFilter, FmtSubscriber};
@@ -14,7 +13,6 @@ mod eth_connector_command;
 mod fast_bridge_command;
 mod nep141_connector_command;
 mod omni_connector_command;
-mod solana_connector_command;
 
 #[derive(Args, Debug, Clone, Deserialize, Default)]
 struct CliConfig {
@@ -298,10 +296,6 @@ enum SubCommand {
         #[clap(subcommand)]
         cmd: OmniConnectorSubCommand,
     },
-    SolanaConnector {
-        #[clap(subcommand)]
-        cmd: SolanaConnectorSubCommand,
-    },
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -336,9 +330,6 @@ async fn main() {
         }
         SubCommand::OmniConnector { cmd } => {
             omni_connector_command::match_subcommand(cmd, args.network).await
-        }
-        SubCommand::SolanaConnector { cmd } => {
-            solana_connector_command::match_subcommand(cmd, args.network).await
         }
     }
 }

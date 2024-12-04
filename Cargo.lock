@@ -958,7 +958,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-bridge-client",
- "solana-connector",
+ "solana-client",
  "solana-sdk",
  "tokio",
  "tracing",
@@ -5175,6 +5175,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "solana-bridge-client",
+ "solana-sdk",
  "tracing",
  "wormhole-bridge-client",
 ]
@@ -7389,22 +7390,6 @@ dependencies = [
  "solana-sdk",
  "thiserror 1.0.69",
  "tokio",
-]
-
-[[package]]
-name = "solana-connector"
-version = "0.1.0"
-dependencies = [
- "bridge-connector-common",
- "derive_builder",
- "near-bridge-client",
- "near-primitives",
- "near-rpc-client",
- "omni-types",
- "serde_json",
- "solana-bridge-client",
- "solana-sdk",
- "tracing",
 ]
 
 [[package]]

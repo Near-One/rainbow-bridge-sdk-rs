@@ -40,11 +40,9 @@ pub enum EthRpcError {
 impl From<EthProofError> for BridgeSdkError {
     fn from(error: EthProofError) -> Self {
         match error {
-            EthProofError::TrieError(e) => BridgeSdkError::EthProofError(e.to_string()),
-            EthProofError::EthClientError(e) => {
-                BridgeSdkError::EthRpcError(EthRpcError::EthClientError(e))
-            }
-            EthProofError::Other(e) => BridgeSdkError::EthProofError(e),
+            EthProofError::TrieError(e) => Self::EthProofError(e.to_string()),
+            EthProofError::EthClientError(e) => Self::EthRpcError(EthRpcError::EthClientError(e)),
+            EthProofError::Other(e) => Self::EthProofError(e),
         }
     }
 }
@@ -52,9 +50,9 @@ impl From<EthProofError> for BridgeSdkError {
 impl From<NearLightClientOnEthError> for BridgeSdkError {
     fn from(error: NearLightClientOnEthError) -> Self {
         match error {
-            NearLightClientOnEthError::ConfigError(e) => BridgeSdkError::ConfigError(e),
+            NearLightClientOnEthError::ConfigError(e) => Self::ConfigError(e),
             NearLightClientOnEthError::EthRpcError(e) => {
-                BridgeSdkError::EthRpcError(EthRpcError::ProviderContractError(e))
+                Self::EthRpcError(EthRpcError::ProviderContractError(e))
             }
         }
     }
@@ -62,6 +60,6 @@ impl From<NearLightClientOnEthError> for BridgeSdkError {
 
 impl From<ContractError<SignerMiddleware<Provider<Http>, LocalWallet>>> for BridgeSdkError {
     fn from(error: ContractError<SignerMiddleware<Provider<Http>, LocalWallet>>) -> Self {
-        BridgeSdkError::EthRpcError(EthRpcError::SignerContractError(error))
+        Self::EthRpcError(EthRpcError::SignerContractError(error))
     }
 }

@@ -267,10 +267,10 @@ fn file_config(path: &str) -> CliConfig {
 }
 
 fn combined_config(cli_config: CliConfig, network: Network) -> CliConfig {
-    let file_config = match &cli_config.config_file {
-        Some(path) => file_config(path),
-        None => CliConfig::default(),
-    };
+    let file_config = cli_config
+        .config_file
+        .as_ref()
+        .map_or_else(CliConfig::default, |path| file_config(path));
 
     cli_config
         .or(env_config())

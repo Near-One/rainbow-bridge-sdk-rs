@@ -27,7 +27,7 @@ impl WormholeBridgeClient {
 
     pub async fn get_vaa<E>(&self, chain_id: u64, emitter: E, sequence: u64) -> Result<String>
     where
-        E: std::fmt::Display,
+        E: std::fmt::Display + Send,
     {
         let endpoint = self.endpoint()?;
         let sanitized_endpoint = endpoint.trim_end_matches('/');

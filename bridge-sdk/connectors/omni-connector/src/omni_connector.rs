@@ -633,7 +633,7 @@ impl OmniConnector {
         sequence: u64,
     ) -> Result<String>
     where
-        E: std::fmt::Display,
+        E: std::fmt::Display + Send,
     {
         let wormhole_bridge_client = self.wormhole_bridge_client()?;
         wormhole_bridge_client

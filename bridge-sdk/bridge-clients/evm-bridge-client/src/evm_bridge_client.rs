@@ -85,52 +85,6 @@ impl EvmBridgeClient {
         Ok(tx.tx_hash())
     }
 
-    /// Mints the corresponding bridged tokens on EVM. Requires an MPC signature
-    #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
-    pub async fn fin_transfer(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
-        let factory = self.bridge_token_factory()?;
-
-        let Nep141LockerEvent::SignTransferEvent {
-            message_payload,
-            signature,
-        } = transfer_log
-        else {
-            return Err(BridgeSdkError::UnknownError);
-        };
-
-        let bridge_deposit = TransferMessagePayload {
-            destination_nonce: message_payload.destination_nonce,
-            origin_chain: message_payload.transfer_id.origin_chain as u8,
-            origin_nonce: message_payload.transfer_id.origin_nonce,
-            token_address: match message_payload.token_address {
-                OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
-                    addr.0.into()
-                }
-                _ => return Err(BridgeSdkError::UnknownError),
-            },
-            amount: message_payload.amount.into(),
-            recipient: match message_payload.recipient {
-                OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
-                    H160(addr.0)
-                }
-                _ => return Err(BridgeSdkError::UnknownError),
-            },
-            fee_recipient: message_payload
-                .fee_recipient
-                .map_or_else(String::new, |addr| addr.to_string()),
-        };
-
-        let call = factory.fin_transfer(signature.to_bytes().into(), bridge_deposit);
-        let tx = call.send().await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent finalize transfer transaction"
-        );
-
-        Ok(tx.tx_hash())
-    }
-
     /// Burns bridged tokens on EVM. The proof from this transaction is then used to withdraw the corresponding tokens on Near
     #[tracing::instrument(skip_all, name = "EVM INIT TRANSFER")]
     pub async fn init_transfer(
@@ -191,6 +145,52 @@ impl EvmBridgeClient {
         Ok(tx.tx_hash())
     }
 
+    /// Mints the corresponding bridged tokens on EVM. Requires an MPC signature
+    #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
+    pub async fn fin_transfer(&self, transfer_log: Nep141LockerEvent) -> Result<TxHash> {
+        let factory = self.bridge_token_factory()?;
+
+        let Nep141LockerEvent::SignTransferEvent {
+            message_payload,
+            signature,
+        } = transfer_log
+        else {
+            return Err(BridgeSdkError::UnknownError);
+        };
+
+        let bridge_deposit = TransferMessagePayload {
+            destination_nonce: message_payload.destination_nonce,
+            origin_chain: message_payload.transfer_id.origin_chain as u8,
+            origin_nonce: message_payload.transfer_id.origin_nonce,
+            token_address: match message_payload.token_address {
+                OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
+                    addr.0.into()
+                }
+                _ => return Err(BridgeSdkError::UnknownError),
+            },
+            amount: message_payload.amount.into(),
+            recipient: match message_payload.recipient {
+                OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
+                    H160(addr.0)
+                }
+                _ => return Err(BridgeSdkError::UnknownError),
+            },
+            fee_recipient: message_payload
+                .fee_recipient
+                .map_or_else(String::new, |addr| addr.to_string()),
+        };
+
+        let call = factory.fin_transfer(signature.to_bytes().into(), bridge_deposit);
+        let tx = call.send().await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.tx_hash()),
+            "Sent finalize transfer transaction"
+        );
+
+        Ok(tx.tx_hash())
+    }
+
     pub async fn get_proof_for_event(
         &self,
         tx_hash: TxHash,
@@ -215,13 +215,13 @@ impl EvmBridgeClient {
         Ok(proof)
     }
 
-    fn endpoint(&self) -> Result<&str> {
+    pub fn endpoint(&self) -> Result<&str> {
         Ok(self.endpoint.as_ref().ok_or(BridgeSdkError::ConfigError(
             "EVM rpc endpoint is not set".to_string(),
         ))?)
     }
 
-    fn bridge_token_factory_address(&self) -> Result<Address> {
+    pub fn bridge_token_factory_address(&self) -> Result<Address> {
         self.bridge_token_factory_address
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
@@ -236,7 +236,7 @@ impl EvmBridgeClient {
             })
     }
 
-    fn bridge_token_factory(
+    pub fn bridge_token_factory(
         &self,
     ) -> Result<BridgeTokenFactory<SignerMiddleware<Provider<Http>, LocalWallet>>> {
         let endpoint = self.endpoint()?;
@@ -255,7 +255,7 @@ impl EvmBridgeClient {
         ))
     }
 
-    fn bridge_token(
+    pub fn bridge_token(
         &self,
         address: Address,
     ) -> Result<ERC20<SignerMiddleware<Provider<Http>, LocalWallet>>> {
@@ -272,7 +272,7 @@ impl EvmBridgeClient {
         Ok(ERC20::new(address, client))
     }
 
-    fn signer(&self) -> Result<LocalWallet> {
+    pub fn signer(&self) -> Result<LocalWallet> {
         let private_key = self
             .private_key
             .as_ref()

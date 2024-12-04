@@ -88,7 +88,11 @@ impl NearBridgeClient {
     }
 
     /// Deploys a token on the target chain using the vaa proof
-    pub async fn deploy_token(&self, chain_kind: ChainKind, vaa: &str) -> Result<CryptoHash> {
+    pub async fn deploy_token_with_vaa_proof(
+        &self,
+        chain_kind: ChainKind,
+        vaa: &str,
+    ) -> Result<CryptoHash> {
         let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
@@ -285,40 +289,6 @@ impl NearBridgeClient {
         );
 
         Ok(tx_hash)
-    }
-
-    /// Signs claiming native fee on NEAR chain using the token locker
-    #[tracing::instrument(skip_all, name = "SIGN NATIVE CLAIM FEE")]
-    pub async fn sign_claim_native_fee(
-        &self,
-        nonces: Vec<u128>,
-        recipient: OmniAddress,
-    ) -> Result<FinalExecutionOutcomeView> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_str()?;
-
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
-            endpoint,
-            self.signer()?,
-            token_locker_id.to_string(),
-            "sign_claim_native_fee".to_string(),
-            json!({
-                "nonces": nonces.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                "recipient": recipient
-            })
-            .to_string()
-            .into_bytes(),
-            300_000_000_000_000,
-            500_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
-            "Sent claim native fee request"
-        );
-
-        Ok(outcome)
     }
 
     pub async fn get_storage_balance(&self, account_id: AccountId) -> Result<u128> {

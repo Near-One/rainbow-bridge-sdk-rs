@@ -20,7 +20,6 @@ tracing.workspace = true
 eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
 bridge-connector-common = { path = "../bridge-connector-common" }
-near-connector = { path = "../near-connector" }
 
 near-bridge-client = { path = "../../bridge-clients/near-bridge-client" }
 evm-bridge-client = { path = "../../bridge-clients/evm-bridge-client" }

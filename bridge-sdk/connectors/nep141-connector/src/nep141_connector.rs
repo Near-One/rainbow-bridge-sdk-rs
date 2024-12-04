@@ -38,7 +38,7 @@ pub struct Nep141Connector {
     #[doc = r"Ethereum private key. Required for `deploy_token`, `mint`, `burn`"]
     eth_private_key: Option<String>,
     #[doc = r"Bridged token factory address on Ethereum. Required for `deploy_token`, `mint`, `burn`"]
-    bridge_token_factory_address: Option<String>,
+    eth_bridge_token_factory_address: Option<String>,
     #[doc = r"NEAR RPC endpoint. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `mint`, `withdraw`"]
     near_endpoint: Option<String>,
     #[doc = r"NEAR private key. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `withdraw`"]
@@ -46,7 +46,7 @@ pub struct Nep141Connector {
     #[doc = r"NEAR account id of the transaction signer. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `withdraw`"]
     near_signer: Option<String>,
     #[doc = r"Token locker account id on Near. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `mint`, `withdraw`"]
-    token_locker_id: Option<String>,
+    near_token_locker_id: Option<String>,
     #[doc = r"NEAR light client address on Ethereum. Required for `deploy_token`, `mint`"]
     near_light_client_address: Option<String>,
 }
@@ -353,7 +353,7 @@ impl Nep141Connector {
 
     fn token_locker_id(&self) -> Result<&str> {
         Ok(self
-            .token_locker_id
+            .near_token_locker_id
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Token locker account id is not set".to_string(),
@@ -376,7 +376,7 @@ impl Nep141Connector {
     }
 
     fn bridge_token_factory_address(&self) -> Result<Address> {
-        self.bridge_token_factory_address
+        self.eth_bridge_token_factory_address
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Bridge token factory address is not set".to_string(),

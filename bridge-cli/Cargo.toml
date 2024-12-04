@@ -17,7 +17,9 @@ omni-types.workspace = true
 solana-sdk.workspace = true
 nep141-connector = { path = "../bridge-sdk/connectors/nep141-connector" }
 eth-connector = { path = "../bridge-sdk/connectors/eth-connector" }
-evm-connector = { path = "../bridge-sdk/connectors/evm-connector" }
-fast-bridge = { path = "../bridge-sdk/connectors/fast-bridge" }
 solana-connector = { path = "../bridge-sdk/connectors/solana-connector" }
-near-connector = { path = "../bridge-sdk/connectors/near-connector" }
+fast-bridge = { path = "../bridge-sdk/connectors/fast-bridge" }
+omni-connector = { path = "../bridge-sdk/connectors/omni-connector" }
+near-bridge-client = { path = "../bridge-sdk/bridge-clients/near-bridge-client" }
+evm-bridge-client = { path = "../bridge-sdk/bridge-clients/evm-bridge-client" }
+solana-bridge-client = { path = "../bridge-sdk/bridge-clients/solana-bridge-client" }

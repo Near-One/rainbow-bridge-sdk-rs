@@ -1,6 +1,6 @@
 use bridge_connector_common::result::{BridgeSdkError, Result};
 use derive_builder::Builder;
-use near_connector::NearConnector;
+use near_bridge_client::NearBridgeClient;
 use near_primitives::{hash::CryptoHash, types::AccountId};
 use omni_types::{near_events::Nep141LockerEvent, OmniAddress};
 use solana_bridge_client::{
@@ -19,7 +19,7 @@ pub struct SolanaConnector {
     wormhole_address: Option<String>,
     keypair: Option<String>,
 
-    near_connector: Option<NearConnector>,
+    near_bridge_client: Option<NearBridgeClient>,
 }
 
 impl SolanaConnector {
@@ -61,7 +61,7 @@ impl SolanaConnector {
         sender_id: Option<AccountId>,
     ) -> Result<Signature> {
         let transfer_log = self
-            .near_connector()?
+            .near_bridge_client()?
             .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
@@ -110,7 +110,7 @@ impl SolanaConnector {
         sender_id: Option<AccountId>,
     ) -> Result<Signature> {
         let transfer_log = self
-            .near_connector()?
+            .near_bridge_client()?
             .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
@@ -223,27 +223,25 @@ impl SolanaConnector {
     }
 
     fn endpoint(&self) -> Result<&str> {
-        Ok(self.endpoint.as_ref().ok_or(BridgeSdkError::ConfigError(
+        self.endpoint.as_deref().ok_or(BridgeSdkError::ConfigError(
             "Solana rpc endpoint is not set".to_string(),
-        ))?)
+        ))
     }
 
     fn bridge_address(&self) -> Result<&str> {
-        Ok(self
-            .bridge_address
-            .as_ref()
+        self.bridge_address
+            .as_deref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Solana bridge address is not set".to_string(),
-            ))?)
+            ))
     }
 
     fn wormhole_address(&self) -> Result<&str> {
-        Ok(self
-            .wormhole_address
-            .as_ref()
+        self.wormhole_address
+            .as_deref()
             .ok_or(BridgeSdkError::ConfigError(
                 "Solana wormhole address is not set".to_string(),
-            ))?)
+            ))
     }
 
     fn keypair(&self) -> Result<Keypair> {
@@ -252,11 +250,11 @@ impl SolanaConnector {
         )?))
     }
 
-    fn near_connector(&self) -> Result<&NearConnector> {
-        self.near_connector
+    fn near_bridge_client(&self) -> Result<&NearBridgeClient> {
+        self.near_bridge_client
             .as_ref()
             .ok_or(BridgeSdkError::ConfigError(
-                "Near connector is not set".to_string(),
+                "Near bridge client is not set".to_string(),
             ))
     }
 }

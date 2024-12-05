@@ -146,7 +146,7 @@ impl NearBridgeClient {
             })
             .to_string()
             .into_bytes(),
-            300_000_000_000_000,
+            10_000_000_000_000,
             amount,
         )
         .await?;

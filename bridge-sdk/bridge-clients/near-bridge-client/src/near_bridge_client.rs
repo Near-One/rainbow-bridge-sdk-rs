@@ -29,29 +29,101 @@ pub struct NearBridgeClient {
 }
 
 impl NearBridgeClient {
-    /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on other chains
-    #[tracing::instrument(skip_all, name = "LOG METADATA")]
-    pub async fn log_token_metadata(&self, token_id: String) -> Result<CryptoHash> {
+    pub async fn get_token_id(&self, token_address: OmniAddress) -> Result<AccountId> {
         let endpoint = self.endpoint()?;
+        let token_id = self.token_locker_id_as_account_id()?;
 
-        let tx_hash = near_rpc_client::change(
+        let response = near_rpc_client::view(
             endpoint,
-            self.signer()?,
-            self.token_locker_id_as_str()?.to_string(),
-            "log_metadata".to_string(),
+            token_id,
+            "get_token_id".to_string(),
             serde_json::json!({
-                "token_id": token_id
-            })
-            .to_string()
-            .into_bytes(),
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
+                "address": token_address
+            }),
         )
         .await?;
 
-        tracing::info!(tx_hash = tx_hash.to_string(), "Sent log transaction");
+        let token_id = serde_json::from_slice::<AccountId>(&response)?;
 
-        Ok(tx_hash)
+        Ok(token_id)
+    }
+
+    pub async fn get_native_token_id(&self, origin_chain: ChainKind) -> Result<AccountId> {
+        let endpoint = self.endpoint()?;
+        let token_id = self.token_locker_id_as_account_id()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_id,
+            "get_native_token_id".to_string(),
+            serde_json::json!({
+                "origin_chain": origin_chain
+            }),
+        )
+        .await?;
+
+        let token_id = serde_json::from_slice::<AccountId>(&response)?;
+
+        Ok(token_id)
+    }
+
+    pub async fn get_storage_balance(&self, account_id: AccountId) -> Result<u128> {
+        let endpoint = self.endpoint()?;
+        let token_locker_id = self.token_locker_id_as_account_id()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_locker_id,
+            "storage_balance_of".to_string(),
+            serde_json::json!({
+                "account_id": account_id
+            }),
+        )
+        .await?;
+
+        let storage_balance: Option<StorageBalance> = serde_json::from_slice(&response)?;
+
+        storage_balance.map_or(Ok(0), |balance| Ok(balance.available.as_yoctonear()))
+    }
+
+    pub async fn get_required_balance_for_account(&self) -> Result<u128> {
+        let endpoint = self.endpoint()?;
+        let token_locker_id = self.token_locker_id_as_account_id()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_locker_id,
+            "required_balance_for_account".to_string(),
+            serde_json::Value::Null,
+        )
+        .await?;
+
+        let required_balance: NearToken = serde_json::from_slice(&response)?;
+        Ok(required_balance.as_yoctonear())
+    }
+
+    pub async fn get_required_storage_deposit(
+        &self,
+        token_id: AccountId,
+        account_id: AccountId,
+    ) -> Result<u128> {
+        let endpoint = self.endpoint()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_id.clone(),
+            "storage_minimum_balance".to_string(),
+            serde_json::Value::Null,
+        )
+        .await?;
+
+        let storage_minimum_balance = serde_json::from_slice::<NearToken>(&response)?;
+
+        let total_balance = NearToken::from_yoctonear(self.get_storage_balance(account_id).await?);
+
+        Ok(storage_minimum_balance
+            .saturating_sub(total_balance)
+            .as_yoctonear())
     }
 
     /// Performs a storage deposit on behalf of the token_locker so that the tokens can be transferred to the locker. To be called once for each NEP-141
@@ -87,8 +159,68 @@ impl NearBridgeClient {
         Ok(tx_hash)
     }
 
+    pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
+        let endpoint = self.endpoint()?;
+        let token_locker_id = self.token_locker_id_as_str()?;
+
+        let tx = near_rpc_client::change_and_wait_for_outcome(
+            endpoint,
+            self.signer()?,
+            token_locker_id.to_string(),
+            "storage_deposit".to_string(),
+            json!({
+                "account_id": None::<AccountId>
+            })
+            .to_string()
+            .into_bytes(),
+            10_000_000_000_000,
+            amount,
+        )
+        .await?;
+
+        if let FinalExecutionStatus::Failure(_) = tx.status {
+            return Err(BridgeSdkError::UnknownError);
+        }
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx.transaction.hash),
+            "Sent storage deposit transaction"
+        );
+
+        Ok(())
+    }
+
+    /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on other chains
+    #[tracing::instrument(skip_all, name = "LOG METADATA")]
+    pub async fn log_token_metadata(&self, token_id: String) -> Result<CryptoHash> {
+        let endpoint = self.endpoint()?;
+
+        let tx_hash = near_rpc_client::change(
+            endpoint,
+            self.signer()?,
+            self.token_locker_id_as_str()?.to_string(),
+            "log_metadata".to_string(),
+            serde_json::json!({
+                "token_id": token_id
+            })
+            .to_string()
+            .into_bytes(),
+            300_000_000_000_000,
+            200_000_000_000_000_000_000_000,
+        )
+        .await?;
+
+        tracing::info!(tx_hash = tx_hash.to_string(), "Sent log transaction");
+
+        Ok(tx_hash)
+    }
+
     /// Deploys a token on the target chain using the vaa proof
-    pub async fn deploy_token(&self, chain_kind: ChainKind, vaa: &str) -> Result<CryptoHash> {
+    pub async fn deploy_token_with_vaa_proof(
+        &self,
+        chain_kind: ChainKind,
+        vaa: &str,
+    ) -> Result<CryptoHash> {
         let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
@@ -116,6 +248,31 @@ impl NearBridgeClient {
         tracing::info!(
             tx_hash = format!("{:?}", tx_hash),
             "Sent deploy token transaction"
+        );
+
+        Ok(tx_hash)
+    }
+
+    /// Binds token on NEAR chain using the token locker
+    #[tracing::instrument(skip_all, name = "BIND TOKEN")]
+    pub async fn bind_token(&self, args: BindTokenArgs) -> Result<CryptoHash> {
+        let endpoint = self.endpoint()?;
+        let token_locker_id = self.token_locker_id_as_str()?;
+
+        let tx_hash = near_rpc_client::change(
+            endpoint,
+            self.signer()?,
+            token_locker_id.to_string(),
+            "bind_token".to_string(),
+            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
+            300_000_000_000_000,
+            200_000_000_000_000_000_000_000,
+        )
+        .await?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent bind token transaction"
         );
 
         Ok(tx_hash)
@@ -157,6 +314,30 @@ impl NearBridgeClient {
         );
 
         Ok(outcome)
+    }
+
+    /// Gets the required balance for the init transfer
+    pub async fn get_required_balance_for_init_transfer(
+        &self,
+        recipient: &str,
+        sender: &str,
+    ) -> Result<u128> {
+        let endpoint = self.endpoint()?;
+        let token_locker_id = self.token_locker_id_as_account_id()?;
+
+        let response = near_rpc_client::view(
+            endpoint,
+            token_locker_id,
+            "required_balance_for_init_transfer".to_string(),
+            serde_json::json!({
+                "recipient": recipient,
+                "sender": format!("near:{}", sender)
+            }),
+        )
+        .await?;
+
+        let required_balance = serde_json::from_slice::<NearToken>(&response)?;
+        Ok(required_balance.as_yoctonear())
     }
 
     /// Transfers NEP-141 tokens to the token locker. The proof from this transaction is then used to mint the corresponding tokens on Ethereum
@@ -260,216 +441,6 @@ impl NearBridgeClient {
         );
 
         Ok(outcome)
-    }
-
-    /// Binds token on NEAR chain using the token locker
-    #[tracing::instrument(skip_all, name = "BIND TOKEN")]
-    pub async fn bind_token(&self, args: BindTokenArgs) -> Result<CryptoHash> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_str()?;
-
-        let tx_hash = near_rpc_client::change(
-            endpoint,
-            self.signer()?,
-            token_locker_id.to_string(),
-            "bind_token".to_string(),
-            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx_hash),
-            "Sent bind token transaction"
-        );
-
-        Ok(tx_hash)
-    }
-
-    /// Signs claiming native fee on NEAR chain using the token locker
-    #[tracing::instrument(skip_all, name = "SIGN NATIVE CLAIM FEE")]
-    pub async fn sign_claim_native_fee(
-        &self,
-        nonces: Vec<u128>,
-        recipient: OmniAddress,
-    ) -> Result<FinalExecutionOutcomeView> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_str()?;
-
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
-            endpoint,
-            self.signer()?,
-            token_locker_id.to_string(),
-            "sign_claim_native_fee".to_string(),
-            json!({
-                "nonces": nonces.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                "recipient": recipient
-            })
-            .to_string()
-            .into_bytes(),
-            300_000_000_000_000,
-            500_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
-            "Sent claim native fee request"
-        );
-
-        Ok(outcome)
-    }
-
-    pub async fn get_storage_balance(&self, account_id: AccountId) -> Result<u128> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            endpoint,
-            token_locker_id,
-            "storage_balance_of".to_string(),
-            serde_json::json!({
-                "account_id": account_id
-            }),
-        )
-        .await?;
-
-        let storage_balance: Option<StorageBalance> = serde_json::from_slice(&response)?;
-
-        storage_balance.map_or(Ok(0), |balance| Ok(balance.available.as_yoctonear()))
-    }
-
-    pub async fn get_required_balance_for_account(&self) -> Result<u128> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            endpoint,
-            token_locker_id,
-            "required_balance_for_account".to_string(),
-            serde_json::Value::Null,
-        )
-        .await?;
-
-        let required_balance: NearToken = serde_json::from_slice(&response)?;
-        Ok(required_balance.as_yoctonear())
-    }
-
-    pub async fn get_required_balance_for_init_transfer(
-        &self,
-        recipient: &str,
-        sender: &str,
-    ) -> Result<u128> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            endpoint,
-            token_locker_id,
-            "required_balance_for_init_transfer".to_string(),
-            serde_json::json!({
-                "recipient": recipient,
-                "sender": format!("near:{}", sender)
-            }),
-        )
-        .await?;
-
-        let required_balance = serde_json::from_slice::<NearToken>(&response)?;
-        Ok(required_balance.as_yoctonear())
-    }
-
-    pub async fn get_required_storage_deposit(
-        &self,
-        token_id: AccountId,
-        account_id: AccountId,
-    ) -> Result<u128> {
-        let endpoint = self.endpoint()?;
-
-        let response = near_rpc_client::view(
-            endpoint,
-            token_id.clone(),
-            "storage_minimum_balance".to_string(),
-            serde_json::Value::Null,
-        )
-        .await?;
-
-        let storage_minimum_balance = serde_json::from_slice::<NearToken>(&response)?;
-
-        let total_balance = NearToken::from_yoctonear(self.get_storage_balance(account_id).await?);
-
-        Ok(storage_minimum_balance
-            .saturating_sub(total_balance)
-            .as_yoctonear())
-    }
-
-    pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
-        let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_str()?;
-
-        let tx = near_rpc_client::change_and_wait_for_outcome(
-            endpoint,
-            self.signer()?,
-            token_locker_id.to_string(),
-            "storage_deposit".to_string(),
-            json!({
-                "account_id": None::<AccountId>
-            })
-            .to_string()
-            .into_bytes(),
-            10_000_000_000_000,
-            amount,
-        )
-        .await?;
-
-        if let FinalExecutionStatus::Failure(_) = tx.status {
-            return Err(BridgeSdkError::UnknownError);
-        }
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.transaction.hash),
-            "Sent storage deposit transaction"
-        );
-
-        Ok(())
-    }
-
-    pub async fn get_native_token_id(&self, origin_chain: ChainKind) -> Result<AccountId> {
-        let endpoint = self.endpoint()?;
-        let token_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            endpoint,
-            token_id,
-            "get_native_token_id".to_string(),
-            serde_json::json!({
-                "origin_chain": origin_chain
-            }),
-        )
-        .await?;
-
-        let token_id = serde_json::from_slice::<AccountId>(&response)?;
-
-        Ok(token_id)
-    }
-
-    pub async fn get_token_id(&self, token_address: OmniAddress) -> Result<AccountId> {
-        let endpoint = self.endpoint()?;
-        let token_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            endpoint,
-            token_id,
-            "get_token_id".to_string(),
-            serde_json::json!({
-                "address": token_address
-            }),
-        )
-        .await?;
-
-        let token_id = serde_json::from_slice::<AccountId>(&response)?;
-
-        Ok(token_id)
     }
 
     pub async fn extract_transfer_log(

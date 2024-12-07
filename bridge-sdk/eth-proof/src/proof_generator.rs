@@ -39,7 +39,9 @@ pub async fn get_proof_for_event(
     }
 
     Ok(EvmProof {
-        log_index: log_index_in_receipt as u64,
+        log_index: log_index_in_receipt
+            .try_into()
+            .map_err(|err: std::num::TryFromIntError| EthProofError::Other(err.to_string()))?,
         log_entry_data: log_data.ok_or(EthProofError::Other(
             "Log not found based on the transaction hash and index provided".to_string(),
         ))?,

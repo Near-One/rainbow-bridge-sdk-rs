@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+derive_builder.workspace = true
 borsh.workspace = true
 sha2.workspace = true
 solana-client.workspace = true
@@ -12,3 +13,6 @@ mpl-token-metadata.workspace = true
 spl-token.workspace = true
 spl-associated-token-account.workspace = true
 thiserror.workspace = true
+
+[lib]
+path = "src/solana_bridge_client.rs"

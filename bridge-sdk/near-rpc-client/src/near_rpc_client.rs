@@ -87,7 +87,7 @@ pub async fn get_last_near_block_height(server_addr: &str) -> Result<u64, NearRp
     };
 
     let block_info = client.call(request).await?;
-    Ok(block_info.header.height as u64)
+    Ok(block_info.header.height)
 }
 
 pub async fn get_block(

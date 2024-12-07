@@ -1,5 +1,5 @@
 [package]
-name = "omni-connector"
+name = "evm-bridge-client"
 version = "0.1.0"
 edition = "2021"
 
@@ -17,16 +17,10 @@ near-contract-standards.workspace = true
 omni-types.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-solana-sdk.workspace = true
 eth-proof = { path = "../../eth-proof" }
 near-rpc-client = { path = "../../near-rpc-client" }
-bridge-connector-common = { path = "../bridge-connector-common" }
-
-near-bridge-client = { path = "../../bridge-clients/near-bridge-client" }
-evm-bridge-client = { path = "../../bridge-clients/evm-bridge-client" }
-solana-bridge-client = { path = "../../bridge-clients/solana-bridge-client" }
-wormhole-bridge-client = { path = "../../bridge-clients/wormhole-bridge-client" }
-
+bridge-connector-common = { path = "../../connectors/bridge-connector-common" }
+near-bridge-client = { path = "../near-bridge-client" }
 
 [lib]
-path = "src/omni_connector.rs"
+path = "src/evm_bridge_client.rs"

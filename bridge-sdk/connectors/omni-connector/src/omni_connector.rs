@@ -1,828 +1,680 @@
-use borsh::BorshSerialize;
 use bridge_connector_common::result::{BridgeSdkError, Result};
-use ethers::{abi::Address, prelude::*};
-use near_contract_standards::storage_management::StorageBalance;
-use near_crypto::SecretKey;
-use near_primitives::{
-    hash::CryptoHash,
-    types::AccountId,
-    views::{FinalExecutionOutcomeView, FinalExecutionStatus},
-};
-use near_token::NearToken;
+use derive_builder::Builder;
+use ethers::prelude::*;
+
+use near_primitives::hash::CryptoHash;
+use near_primitives::types::AccountId;
+use near_primitives::views::FinalExecutionOutcomeView;
+
+use omni_types::locker_args::{ClaimFeeArgs, StorageDepositAction};
+use omni_types::prover_args::EvmVerifyProofArgs;
 use omni_types::prover_result::ProofKind;
-use omni_types::{locker_args::DeployTokenArgs, prover_args::EvmVerifyProofArgs};
-use omni_types::{
-    locker_args::{BindTokenArgs, ClaimFeeArgs, FinTransferArgs},
-    near_events::Nep141LockerEvent,
-    ChainKind, Fee, OmniAddress,
+use omni_types::{near_events::Nep141LockerEvent, ChainKind};
+use omni_types::{Fee, OmniAddress};
+
+use evm_bridge_client::EvmBridgeClient;
+use near_bridge_client::NearBridgeClient;
+use solana_bridge_client::{
+    DeployTokenData, DepositPayload, FinalizeDepositData, MetadataPayload, SolanaBridgeClient,
+    TransferId,
 };
-use serde_json::json;
-use sha3::{Digest, Keccak256};
-use std::{str::FromStr, sync::Arc};
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::{Keypair, Signature};
+use wormhole_bridge_client::WormholeBridgeClient;
 
-abigen!(
-    BridgeTokenFactory,
-    r#"[
-      struct MetadataPayload { string token; string name; string symbol; uint8 decimals; }
-      struct TransferMessagePayload { uint64 destinationNonce; uint8 originChain; uint64 originNonce; address tokenAddress; uint128 amount; address recipient; string feeRecipient; }
-      function deployToken(bytes signatureData, MetadataPayload metadata) external returns (address)
-      function finTransfer(bytes, TransferMessagePayload) external
-      function initTransfer(address tokenAddress, uint128 amount, uint128 fee, uint128 nativeFee, string recipient, string message) external
-      function nearToEthToken(string nearTokenId) external view returns (address)
-    ]"#
-);
-
-abigen!(
-    ERC20,
-    r#"[
-      function allowance(address _owner, address _spender) public view returns (uint256 remaining)
-      function approve(address spender, uint256 amount) external returns (bool)
-    ]"#
-);
-
-/// Bridging NEAR-originated NEP-141 tokens to Ethereum and back
 #[derive(Builder, Default)]
+#[builder(pattern = "owned")]
 pub struct OmniConnector {
-    #[doc = r"Ethereum RPC endpoint. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
-    eth_endpoint: Option<String>,
-    #[doc = r"Ethereum chain id. Required for `deploy_token`, `mint`, `burn`, `withdraw`"]
-    eth_chain_id: Option<u64>,
-    #[doc = r"Ethereum private key. Required for `deploy_token`, `mint`, `burn`"]
-    eth_private_key: Option<String>,
-    #[doc = r"Bridged token factory address on Ethereum. Required for `deploy_token`, `mint`, `burn`"]
-    bridge_token_factory_address: Option<String>,
-    #[doc = r"NEAR RPC endpoint. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `mint`, `withdraw`"]
-    near_endpoint: Option<String>,
-    #[doc = r"NEAR private key. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `withdraw`"]
-    near_private_key: Option<String>,
-    #[doc = r"NEAR account id of the transaction signer. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `withdraw`"]
-    near_signer: Option<String>,
-    #[doc = r"Token locker account id on Near. Required for `log_token_metadata`, `storage_deposit_for_token`, `deploy_token`, `deposit`, `mint`, `withdraw`"]
-    token_locker_id: Option<String>,
+    near_bridge_client: Option<NearBridgeClient>,
+    eth_bridge_client: Option<EvmBridgeClient>,
+    base_bridge_client: Option<EvmBridgeClient>,
+    arb_bridge_client: Option<EvmBridgeClient>,
+    solana_bridge_client: Option<SolanaBridgeClient>,
+    wormhole_bridge_client: Option<WormholeBridgeClient>,
+}
+
+pub enum LogMetadataArgs {
+    NearLogMetadata { token: String },
+    SolanaLogMetadata { token: Pubkey },
+}
+
+pub enum DeployTokenArgs {
+    NearDeployToken {
+        chain_kind: ChainKind,
+        vaa: String,
+    },
+    EvmDeployToken {
+        chain_kind: ChainKind,
+        event: Nep141LockerEvent,
+    },
+    EvmDeployTokenWithTxHash {
+        chain_kind: ChainKind,
+        near_tx_hash: CryptoHash,
+    },
+    SolanaDeployToken {
+        tx_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+    },
+}
+
+pub enum BindTokenArgs {
+    EvmBindToken {
+        chain_kind: ChainKind,
+        tx_hash: TxHash,
+    },
+    WormholeBindToken {
+        bind_token_args: omni_types::locker_args::BindTokenArgs,
+    },
+}
+
+pub enum InitTransferArgs {
+    NearInitTransfer {
+        token: String,
+        amount: u128,
+        receiver: String,
+    },
+    EvmInitTransfer {
+        chain_kind: ChainKind,
+        token: String,
+        amount: u128,
+        receiver: String,
+        fee: Fee,
+    },
+    SolanaInitTransfer {
+        token: Pubkey,
+        amount: u128,
+        recipient: String,
+    },
+    SolanaInitTransferSol {
+        amount: u128,
+        recipient: String,
+    },
+}
+
+pub enum FinTransferArgs {
+    NearFinTransfer {
+        chain_kind: ChainKind,
+        storage_deposit_actions: Vec<StorageDepositAction>,
+        prover_args: Vec<u8>,
+    },
+    EvmFinTransfer {
+        chain_kind: ChainKind,
+        event: Nep141LockerEvent,
+    },
+    EvmFinTransferWithTxHash {
+        chain_kind: ChainKind,
+        near_tx_hash: CryptoHash,
+    },
+    SolanaFinTransfer {
+        tx_hash: CryptoHash,
+        sender_id: Option<AccountId>,
+        solana_token: Pubkey,
+    },
 }
 
 impl OmniConnector {
-    /// Creates an empty instance of the bridging client. Property values can be set separately depending on the required use case.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on Ethereum
-    #[tracing::instrument(skip_all, name = "LOG METADATA")]
-    pub async fn log_token_metadata(&self, near_token_id: String) -> Result<CryptoHash> {
-        let near_endpoint = self.near_endpoint()?;
-
-        let args = format!(r#"{{"token_id":"{near_token_id}"}}"#).into_bytes();
-
-        let tx_id = near_rpc_client::change(
-            near_endpoint,
-            self.near_signer()?,
-            self.token_locker_id()?.to_string(),
-            "log_metadata".to_string(),
-            args,
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(tx_hash = tx_id.to_string(), "Sent log transaction");
-
-        Ok(tx_id)
+    pub async fn near_get_token_id(&self, token_address: OmniAddress) -> Result<AccountId> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.get_token_id(token_address).await
     }
 
-    /// Performs a storage deposit on behalf of the token_locker so that the tokens can be transferred to the locker. To be called once for each NEP-141
-    #[tracing::instrument(skip_all, name = "STORAGE DEPOSIT")]
-    pub async fn storage_deposit_for_token(
+    pub async fn near_get_native_token_id(&self, origin_chain: ChainKind) -> Result<AccountId> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.get_native_token_id(origin_chain).await
+    }
+
+    pub async fn near_log_metadata(&self, token_id: String) -> Result<CryptoHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.log_token_metadata(token_id).await
+    }
+
+    pub async fn near_deploy_token_with_vaa_proof(
         &self,
-        near_token_id: String,
+        chain_kind: ChainKind,
+        vaa: String,
+    ) -> Result<CryptoHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .deploy_token_with_vaa_proof(chain_kind, &vaa)
+            .await
+    }
+
+    pub async fn near_bind_token(
+        &self,
+        bind_token_args: omni_types::locker_args::BindTokenArgs,
+    ) -> Result<CryptoHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.bind_token(bind_token_args).await
+    }
+
+    pub async fn near_get_required_storage_deposit(
+        &self,
+        token_id: AccountId,
+        account_id: AccountId,
+    ) -> Result<u128> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .get_required_storage_deposit(token_id, account_id)
+            .await
+    }
+
+    pub async fn near_storage_deposit_for_token(
+        &self,
+        token_id: String,
         amount: u128,
     ) -> Result<CryptoHash> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker = self.token_locker_id()?.to_string();
-
-        let args = format!(r#"{{"account_id":"{token_locker}"}}"#).into_bytes();
-
-        let tx_id = near_rpc_client::change(
-            near_endpoint,
-            self.near_signer()?,
-            near_token_id,
-            "storage_deposit".to_string(),
-            args,
-            300_000_000_000_000,
-            amount,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = tx_id.to_string(),
-            "Sent storage deposit transaction"
-        );
-
-        Ok(tx_id)
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .storage_deposit_for_token(token_id, amount)
+            .await
     }
 
-    /// Deploys an ERC-20 token that will be used when bridging NEP-141 tokens to Ethereum. Requires a receipt from log_metadata transaction on Near
-    #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN")]
-    pub async fn evm_deploy_token(
-        &self,
-        transaction_hash: CryptoHash,
-        sender_id: Option<AccountId>,
-    ) -> Result<TxHash> {
-        let transfer_log = self
-            .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
-            .await?;
-
-        self.evm_deploy_token_with_log(
-            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-        )
-        .await
-    }
-
-    #[tracing::instrument(skip_all, name = "EVM DEPLOY TOKEN WITH LOG")]
-    pub async fn evm_deploy_token_with_log(
-        &self,
-        transfer_log: Nep141LockerEvent,
-    ) -> Result<TxHash> {
-        let factory = self.bridge_token_factory()?;
-
-        let Nep141LockerEvent::LogMetadataEvent {
-            signature,
-            metadata_payload,
-        } = transfer_log
-        else {
-            return Err(BridgeSdkError::UnknownError);
-        };
-
-        let payload = MetadataPayload {
-            token: metadata_payload.token,
-            name: metadata_payload.name,
-            symbol: metadata_payload.symbol,
-            decimals: metadata_payload.decimals,
-        };
-
-        let serialized_signature = signature.to_bytes();
-
-        assert!(serialized_signature.len() == 65);
-
-        let call = factory
-            .deploy_token(serialized_signature.into(), payload)
-            .gas(500_000);
-        let tx = call.send().await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent new bridge token transaction"
-        );
-
-        Ok(tx.tx_hash())
-    }
-
-    pub async fn near_deploy_token(&self, chain_kind: ChainKind, vaa: &str) -> Result<CryptoHash> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
-
-        let args = omni_types::prover_args::WormholeVerifyProofArgs {
-            proof_kind: omni_types::prover_result::ProofKind::LogMetadata,
-            vaa: vaa.to_owned(),
-        };
-
-        let args = DeployTokenArgs {
-            chain_kind,
-            prover_args: borsh::to_vec(&args).unwrap(),
-        };
-
-        let mut serialized_args = Vec::new();
-        args.serialize(&mut serialized_args)
-            .map_err(|_| BridgeSdkError::UnknownError)?;
-
-        let tx_id = near_rpc_client::change(
-            near_endpoint,
-            self.near_signer()?,
-            token_locker_id.to_string(),
-            "deploy_token".to_string(),
-            serialized_args,
-            120_000_000_000_000,
-            4_000_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
-            "Sent deploy token transaction"
-        );
-
-        Ok(tx_id)
-    }
-
-    /// Transfers NEP-141 tokens to the token locker. The proof from this transaction is then used to mint the corresponding tokens on Ethereum
-    #[tracing::instrument(skip_all, name = "NEAR INIT TRANSFER")]
-    pub async fn near_init_transfer(
-        &self,
-        near_token_id: String,
-        amount: u128,
-        receiver: String,
-    ) -> Result<CryptoHash> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker = self.token_locker_id()?.to_string();
-
-        let required_balance = self
-            .get_required_balance_for_init_transfer(&receiver, self.near_account_id()?.as_str())
-            .await?
-            + self.get_required_balance_for_account().await?;
-        let existing_balance = self.get_storage_balance().await?;
-
-        if existing_balance < required_balance {
-            self.storage_deposit(required_balance - existing_balance)
-                .await?;
-        }
-
-        let fee = 0;
-        let args =
-            format!(r#"{{"receiver_id":"{token_locker}","amount":"{amount}","msg":"{{\"recipient\":\"{receiver}\",\"fee\":\"{fee}\",\"native_token_fee\":\"0\"}}"}}"#)
-                .into_bytes();
-
-        let tx_hash = near_rpc_client::change(
-            near_endpoint,
-            self.near_signer()?,
-            near_token_id,
-            "ft_transfer_call".to_string(),
-            args,
-            300_000_000_000_000,
-            1,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx_hash),
-            "Sent transfer transaction"
-        );
-
-        Ok(tx_hash)
-    }
-
-    /// Mints the corresponding bridged tokens on Ethereum. Requires an MPC signature
-    #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER")]
-    pub async fn evm_fin_transfer(
-        &self,
-        transaction_hash: CryptoHash,
-        sender_id: Option<AccountId>,
-    ) -> Result<TxHash> {
-        let transfer_log = self
-            .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
-            .await?;
-
-        self.evm_fin_transfer_with_log(
-            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-        )
-        .await
-    }
-
-    #[tracing::instrument(skip_all, name = "EVM FIN TRANSFER WITH LOG")]
-    pub async fn evm_fin_transfer_with_log(
-        &self,
-        transfer_log: Nep141LockerEvent,
-    ) -> Result<TxHash> {
-        let factory = self.bridge_token_factory()?;
-
-        let Nep141LockerEvent::SignTransferEvent {
-            message_payload,
-            signature,
-        } = transfer_log
-        else {
-            return Err(BridgeSdkError::UnknownError);
-        };
-
-        let bridge_deposit = TransferMessagePayload {
-            destination_nonce: message_payload.destination_nonce.into(),
-            origin_chain: message_payload.transfer_id.origin_chain as u8,
-            origin_nonce: message_payload.transfer_id.origin_nonce.into(),
-            token_address: match message_payload.token_address {
-                OmniAddress::Eth(address) => address.0.into(),
-                _ => return Err(BridgeSdkError::UnknownError),
-            },
-            amount: message_payload.amount.into(),
-            recipient: match message_payload.recipient {
-                OmniAddress::Eth(addr) | OmniAddress::Base(addr) | OmniAddress::Arb(addr) => {
-                    H160(addr.0)
-                }
-                _ => return Err(BridgeSdkError::UnknownError),
-            },
-            fee_recipient: message_payload
-                .fee_recipient
-                .map_or_else(String::new, |addr| addr.to_string()),
-        };
-
-        let call = factory.fin_transfer(signature.to_bytes().into(), bridge_deposit);
-        let tx = call.send().await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent finalize transfer transaction"
-        );
-
-        Ok(tx.tx_hash())
-    }
-
-    /// Burns bridged tokens on Ethereum. The proof from this transaction is then used to withdraw the corresponding tokens on Near
-    #[tracing::instrument(skip_all, name = "EVM INIT TRANSFER")]
-    pub async fn evm_init_transfer(
-        &self,
-        near_token_id: String,
-        amount: u128,
-        receiver: String,
-        fee: Fee,
-    ) -> Result<TxHash> {
-        let factory = self.bridge_token_factory()?;
-
-        let erc20_address = factory
-            .near_to_eth_token(near_token_id.clone())
-            .call()
-            .await?;
-
-        tracing::debug!(
-            address = format!("{:?}", erc20_address),
-            "Retrieved ERC20 address"
-        );
-
-        let bridge_token = &self.bridge_token(erc20_address)?;
-
-        let signer = self.eth_signer()?;
-        let bridge_token_factory_address = self.bridge_token_factory_address()?;
-        let allowance = bridge_token
-            .allowance(signer.address(), bridge_token_factory_address)
-            .call()
-            .await?;
-
-        let amount256: ethers::types::U256 = amount.into();
-        if allowance < amount256 {
-            bridge_token
-                .approve(bridge_token_factory_address, amount256 - allowance)
-                .send()
-                .await?
-                .await
-                .map_err(ContractError::from)?;
-
-            tracing::debug!("Approved tokens for spending");
-        }
-
-        let withdraw_call = factory.init_transfer(
-            erc20_address,
-            amount,
-            fee.fee.into(),
-            fee.native_fee.into(),
-            receiver,
-            String::new(),
-        );
-        let tx = withdraw_call.send().await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.tx_hash()),
-            "Sent transfer transaction"
-        );
-
-        Ok(tx.tx_hash())
-    }
-
-    /// Withdraws NEP-141 tokens from the token locker. Requires a proof from the burn transaction
-    #[tracing::instrument(skip_all, name = "NEAR FIN TRANSFER")]
-    pub async fn near_fin_transfer(&self, args: FinTransferArgs) -> Result<CryptoHash> {
-        let near_endpoint = self.near_endpoint()?;
-
-        let tx_hash = near_rpc_client::change(
-            near_endpoint,
-            self.near_signer()?,
-            self.token_locker_id()?.to_string(),
-            "fin_transfer".to_string(),
-            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            300_000_000_000_000,
-            60_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx_hash),
-            "Sent finalize transfer transaction"
-        );
-
-        Ok(tx_hash)
-    }
-
-    /// Signs transfer using the token locker
-    #[tracing::instrument(skip_all, name = "SIGN TRANSFER")]
-    pub async fn sign_transfer(
+    pub async fn near_sign_transfer(
         &self,
         origin_nonce: u64,
         fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
     ) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.near_endpoint()?;
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .sign_transfer(origin_nonce, fee_recipient, fee)
+            .await
+    }
 
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
-            self.near_signer()?,
-            self.token_locker_id()?.to_string(),
-            "sign_transfer".to_string(),
-            serde_json::json!({
-                "transfer_id": {
-                    "origin_chain": ChainKind::Near, // TODO: provide transfer_id instead of only nonce
-                    "origin_nonce": origin_nonce
-                },
-                "fee_recipient": fee_recipient,
-                "fee": fee,
+    pub async fn near_init_transfer(
+        &self,
+        token_id: String,
+        amount: u128,
+        receiver: String,
+    ) -> Result<CryptoHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .init_transfer(token_id, amount, receiver)
+            .await
+    }
+
+    pub async fn near_fin_transfer(
+        &self,
+        chain_kind: ChainKind,
+        storage_deposit_actions: Vec<StorageDepositAction>,
+        prover_args: Vec<u8>,
+    ) -> Result<CryptoHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client
+            .fin_transfer(omni_types::locker_args::FinTransferArgs {
+                chain_kind,
+                storage_deposit_actions,
+                prover_args,
             })
-            .to_string()
-            .into_bytes(),
-            300_000_000_000_000,
-            500_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
-            "Sent sign transfer transaction"
-        );
-
-        Ok(outcome)
+            .await
     }
 
-    /// Claims fee on NEAR chain using the token locker
-    #[tracing::instrument(skip_all, name = "CLAIM FEE")]
-    pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
-
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
-            self.near_signer()?,
-            token_locker_id.to_string(),
-            "claim_fee".to_string(),
-            borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
-        )
-        .await?;
-
-        tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
-            "Sent claim fee request"
-        );
-
-        Ok(outcome)
+    pub async fn near_claim_fee(
+        &self,
+        claim_fee_args: ClaimFeeArgs,
+    ) -> Result<FinalExecutionOutcomeView> {
+        let near_bridge_client = self.near_bridge_client()?;
+        near_bridge_client.claim_fee(claim_fee_args).await
     }
 
-    pub async fn bind_token_with_evm_prover(&self, tx_hash: TxHash) -> Result<CryptoHash> {
-        let eth_endpoint = self.eth_endpoint()?;
+    pub async fn near_bind_token_with_evm_proof(
+        &self,
+        chain_kind: ChainKind,
+        tx_hash: TxHash,
+    ) -> Result<CryptoHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
 
-        let event_topic = H256::from_str(&hex::encode(Keccak256::digest(
-            "DeployToken(address,string,string,string,uint8)".as_bytes(),
-        )))
-        .map_err(|_| BridgeSdkError::UnknownError)?;
+        let proof = evm_bridge_client
+            .get_proof_for_event(tx_hash, ProofKind::DeployToken)
+            .await?;
 
-        let proof = eth_proof::get_proof_for_event(tx_hash, event_topic, eth_endpoint).await?;
-
-        let evm_verify_proof_args = EvmVerifyProofArgs {
+        let verify_proof_args = EvmVerifyProofArgs {
             proof_kind: ProofKind::DeployToken,
             proof,
         };
 
-        self.bind_token(BindTokenArgs {
-            chain_kind: ChainKind::Eth,
-            prover_args: borsh::to_vec(&evm_verify_proof_args).map_err(|_| {
-                BridgeSdkError::EthProofError("Failed to serialize proof".to_string())
-            })?,
-        })
-        .await
+        near_bridge_client
+            .bind_token(omni_types::locker_args::BindTokenArgs {
+                chain_kind,
+                prover_args: borsh::to_vec(&verify_proof_args).map_err(|_| {
+                    BridgeSdkError::EthProofError("Failed to serialize proof".to_string())
+                })?,
+            })
+            .await
     }
 
-    #[tracing::instrument(skip_all, name = "BIND TOKEN")]
-    pub async fn bind_token(&self, args: BindTokenArgs) -> Result<CryptoHash> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
+    pub async fn evm_deploy_token(
+        &self,
+        chain_kind: ChainKind,
+        event: Nep141LockerEvent,
+    ) -> Result<TxHash> {
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
+        evm_bridge_client.deploy_token(event).await
+    }
 
-        let mut serialized_args = Vec::new();
-        args.serialize(&mut serialized_args)
+    pub async fn evm_deploy_token_with_tx_hash(
+        &self,
+        chain_kind: ChainKind,
+        near_tx_hash: CryptoHash,
+    ) -> Result<TxHash> {
+        let near_bridge_client = self.near_bridge_client()?;
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
+
+        let transfer_log = near_bridge_client
+            .extract_transfer_log(near_tx_hash, None, "LogMetadataEvent")
+            .await?;
+
+        evm_bridge_client
+            .deploy_token(
+                serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+            )
+            .await
+    }
+
+    pub async fn evm_init_transfer(
+        &self,
+        chain_kind: ChainKind,
+        near_token_id: String,
+        amount: u128,
+        receiver: String,
+        fee: Fee,
+    ) -> Result<TxHash> {
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
+        evm_bridge_client
+            .init_transfer(near_token_id, amount, receiver, fee)
+            .await
+    }
+
+    pub async fn evm_fin_transfer(
+        &self,
+        chain_kind: ChainKind,
+        event: Nep141LockerEvent,
+    ) -> Result<TxHash> {
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
+        evm_bridge_client.fin_transfer(event).await
+    }
+
+    pub async fn evm_fin_transfer_with_tx_hash(
+        &self,
+        chain_kind: ChainKind,
+        near_tx_hash: CryptoHash,
+    ) -> Result<TxHash> {
+        let evm_bridge_client = self.evm_bridge_client(chain_kind)?;
+        let near_bridge_client = self.near_bridge_client()?;
+
+        let transfer_log = near_bridge_client
+            .extract_transfer_log(near_tx_hash, None, "SignTransferEvent")
+            .await?;
+
+        evm_bridge_client
+            .fin_transfer(
+                serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+            )
+            .await
+    }
+
+    pub async fn solana_initialize(&self, program_keypair: Keypair) -> Result<Signature> {
+        // Derived based on near bridge account id and derivation path (bridge-1)
+        const DERIVED_NEAR_BRIDGE_ADDRESS: [u8; 64] = [
+            19, 55, 243, 130, 164, 28, 152, 3, 170, 254, 187, 182, 135, 17, 208, 98, 216, 182, 238,
+            146, 2, 127, 83, 201, 149, 246, 138, 221, 29, 111, 186, 167, 150, 196, 102, 219, 89,
+            69, 115, 114, 185, 116, 6, 233, 154, 114, 222, 142, 167, 206, 157, 39, 177, 221, 224,
+            86, 146, 61, 226, 206, 55, 2, 119, 12,
+        ];
+
+        let solana_bridge_client = self.solana_bridge_client()?;
+
+        let tx_hash = solana_bridge_client
+            .initialize(DERIVED_NEAR_BRIDGE_ADDRESS, program_keypair)
+            .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
-        let tx_id = near_rpc_client::change(
-            near_endpoint,
-            self.near_signer()?,
-            token_locker_id.to_string(),
-            "bind_token".to_string(),
-            serialized_args,
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
-        )
-        .await?;
-
         tracing::info!(
-            tx_hash = format!("{:?}", tx_id),
-            "Sent bind token transaction"
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent initialize transaction"
         );
 
-        Ok(tx_id)
+        Ok(tx_hash)
     }
 
-    /// Signs claiming native fee on NEAR chain using the token locker
-    #[tracing::instrument(skip_all, name = "SIGN NATIVE CLAIM FEE")]
-    pub async fn sign_claim_native_fee(
-        &self,
-        nonces: Vec<u128>,
-        recipient: OmniAddress,
-    ) -> Result<FinalExecutionOutcomeView> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
+    pub async fn solana_log_metadata(&self, token: Pubkey) -> Result<Signature> {
+        let solana_bridge_client = self.solana_bridge_client()?;
 
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
-            self.near_signer()?,
-            token_locker_id.to_string(),
-            "sign_claim_native_fee".to_string(),
-            json!({
-                "nonces": nonces.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                "recipient": recipient
-            })
-            .to_string()
-            .into_bytes(),
-            300_000_000_000_000,
-            500_000_000_000_000_000_000_000,
-        )
-        .await?;
+        let tx_hash = solana_bridge_client
+            .log_metadata(token)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
-            "Sent claim native fee request"
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent register token transaction"
         );
 
-        Ok(outcome)
+        Ok(tx_hash)
     }
 
-    pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id()?;
-
-        let tx = near_rpc_client::change_and_wait_for_outcome(
-            near_endpoint,
-            self.near_signer()?,
-            token_locker_id.to_string(),
-            "storage_deposit".to_string(),
-            json!({
-                "account_id": None::<AccountId>
-            })
-            .to_string()
-            .into_bytes(),
-            10_000_000_000_000,
-            amount,
-        )
-        .await?;
-
-        if let FinalExecutionStatus::Failure(_) = tx.status {
-            return Err(BridgeSdkError::UnknownError);
-        }
-
-        tracing::info!(
-            tx_hash = format!("{:?}", tx.transaction.hash),
-            "Sent storage deposit transaction"
-        );
-
-        Ok(())
-    }
-
-    pub async fn get_storage_balance(&self) -> Result<u128> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            near_endpoint,
-            token_locker_id,
-            "storage_balance_of".to_string(),
-            serde_json::json!({
-                "account_id": self.near_account_id()?
-            }),
-        )
-        .await?;
-
-        let storage_balance: Option<StorageBalance> = serde_json::from_slice(&response)?;
-
-        match storage_balance {
-            Some(balance) => Ok(balance.available.as_yoctonear()),
-            None => Ok(0),
-        }
-    }
-
-    pub async fn get_required_balance_for_account(&self) -> Result<u128> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            near_endpoint,
-            token_locker_id,
-            "required_balance_for_account".to_string(),
-            serde_json::Value::Null,
-        )
-        .await?;
-
-        let required_balance: NearToken = serde_json::from_slice(&response)?;
-        Ok(required_balance.as_yoctonear())
-    }
-
-    pub async fn get_required_balance_for_init_transfer(
-        &self,
-        recipient: &str,
-        sender: &str,
-    ) -> Result<u128> {
-        let near_endpoint = self.near_endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
-
-        let response = near_rpc_client::view(
-            near_endpoint,
-            token_locker_id,
-            "required_balance_for_init_transfer".to_string(),
-            serde_json::json!({
-                "recipient": recipient,
-                "sender": format!("near:{}", sender)
-            }),
-        )
-        .await?;
-
-        let required_balance: NearToken = serde_json::from_slice(&response)?;
-        Ok(required_balance.as_yoctonear())
-    }
-
-    async fn extract_transfer_log(
+    pub async fn solana_deploy_token(
         &self,
         transaction_hash: CryptoHash,
         sender_id: Option<AccountId>,
-        event_name: &str,
-    ) -> Result<String> {
-        let near_endpoint = self.near_endpoint()?;
+    ) -> Result<Signature> {
+        let solana_bridge_client = self.solana_bridge_client()?;
+        let near_bridge_client = self.near_bridge_client()?;
 
-        let sender_id = match sender_id {
-            Some(id) => id,
-            None => self.near_account_id()?,
+        let transfer_log = near_bridge_client
+            .extract_transfer_log(transaction_hash, sender_id, "LogMetadataEvent")
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        let Nep141LockerEvent::LogMetadataEvent {
+            signature,
+            metadata_payload,
+        } = serde_json::from_str(&transfer_log)?
+        else {
+            return Err(BridgeSdkError::UnknownError);
         };
-        let sign_tx = near_rpc_client::wait_for_tx_final_outcome(
-            transaction_hash,
-            sender_id,
-            near_endpoint,
-            30,
-        )
-        .await?;
 
-        let transfer_log = sign_tx
-            .receipts_outcome
-            .iter()
-            .find(|receipt| {
-                !receipt.outcome.logs.is_empty() && receipt.outcome.logs[0].contains(event_name)
-            })
-            .ok_or(BridgeSdkError::UnknownError)?
-            .outcome
-            .logs[0]
-            .clone();
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27; // TODO: Remove recovery_id modification in OmniTypes and add it specifically when submitting to EVM chains
 
-        Ok(transfer_log)
+        let payload = DeployTokenData {
+            metadata: MetadataPayload {
+                token: metadata_payload.token,
+                name: metadata_payload.name,
+                symbol: metadata_payload.symbol,
+                decimals: metadata_payload.decimals,
+            },
+            signature: signature
+                .try_into()
+                .map_err(|_| BridgeSdkError::UnknownError)?,
+        };
+
+        let tx_hash = solana_bridge_client
+            .deploy_token(payload)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent deploy token transaction"
+        );
+
+        Ok(tx_hash)
     }
 
-    fn eth_endpoint(&self) -> Result<&str> {
-        Ok(self
-            .eth_endpoint
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Ethereum rpc endpoint is not set".to_string(),
-            ))?)
-    }
-
-    fn near_endpoint(&self) -> Result<&str> {
-        Ok(self
-            .near_endpoint
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Near rpc endpoint is not set".to_string(),
-            ))?)
-    }
-
-    fn token_locker_id(&self) -> Result<&str> {
-        Ok(self
-            .token_locker_id
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Token locker account id is not set".to_string(),
-            ))?)
-    }
-
-    fn token_locker_id_as_account_id(&self) -> Result<AccountId> {
-        self.token_locker_id()?
-            .parse::<AccountId>()
-            .map_err(|_| BridgeSdkError::ConfigError("Invalid token locker account id".to_string()))
-    }
-
-    fn bridge_token_factory_address(&self) -> Result<Address> {
-        self.bridge_token_factory_address
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Bridge token factory address is not set".to_string(),
-            ))
-            .and_then(|addr| {
-                Address::from_str(addr).map_err(|_| {
-                    BridgeSdkError::ConfigError(
-                        "bridge_token_factory_address is not a valid Ethereum address".to_string(),
-                    )
-                })
-            })
-    }
-
-    fn near_account_id(&self) -> Result<AccountId> {
-        self.near_signer
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Near signer account id is not set".to_string(),
-            ))?
-            .parse::<AccountId>()
-            .map_err(|_| BridgeSdkError::ConfigError("Invalid near signer account id".to_string()))
-    }
-
-    fn near_signer(&self) -> Result<near_crypto::InMemorySigner> {
-        let near_private_key =
-            self.near_private_key
-                .as_ref()
-                .ok_or(BridgeSdkError::ConfigError(
-                    "Near account private key is not set".to_string(),
-                ))?;
-        let near_signer_id = self.near_account_id()?;
-
-        Ok(near_crypto::InMemorySigner::from_secret_key(
-            near_signer_id,
-            SecretKey::from_str(near_private_key)
-                .map_err(|_| BridgeSdkError::ConfigError("Invalid near private key".to_string()))?,
-        ))
-    }
-
-    fn bridge_token_factory(
+    pub async fn solana_init_transfer(
         &self,
-    ) -> Result<BridgeTokenFactory<SignerMiddleware<Provider<Http>, LocalWallet>>> {
-        let eth_endpoint = self.eth_endpoint()?;
+        token: Pubkey,
+        amount: u128,
+        recipient: String,
+    ) -> Result<Signature> {
+        let solana_bridge_client = self.solana_bridge_client()?;
 
-        let eth_provider = Provider::<Http>::try_from(eth_endpoint).map_err(|_| {
-            BridgeSdkError::ConfigError("Invalid ethereum rpc endpoint url".to_string())
-        })?;
+        let tx_hash = solana_bridge_client
+            .init_transfer(token, amount, recipient)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
-        let wallet = self.eth_signer()?;
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent init transfer native transaction"
+        );
 
-        let signer = SignerMiddleware::new(eth_provider, wallet);
-        let client = Arc::new(signer);
-
-        Ok(BridgeTokenFactory::new(
-            self.bridge_token_factory_address()?,
-            client,
-        ))
+        Ok(tx_hash)
     }
 
-    fn bridge_token(
+    pub async fn solana_init_transfer_sol(
         &self,
-        address: Address,
-    ) -> Result<ERC20<SignerMiddleware<Provider<Http>, LocalWallet>>> {
-        let eth_endpoint = self.eth_endpoint()?;
+        amount: u128,
+        recipient: String,
+    ) -> Result<Signature> {
+        let solana_bridge_client = self.solana_bridge_client()?;
 
-        let eth_provider = Provider::<Http>::try_from(eth_endpoint).map_err(|_| {
-            BridgeSdkError::ConfigError("Invalid ethereum rpc endpoint url".to_string())
-        })?;
+        let tx_hash = solana_bridge_client
+            .init_transfer_sol(amount, recipient)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
-        let wallet = self.eth_signer()?;
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent init transfer SOL transaction"
+        );
 
-        let signer = SignerMiddleware::new(eth_provider, wallet);
-        let client = Arc::new(signer);
-
-        Ok(ERC20::new(address, client))
+        Ok(tx_hash)
     }
 
-    fn eth_signer(&self) -> Result<LocalWallet> {
-        let eth_private_key = self
-            .eth_private_key
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Ethereum private key is not set".to_string(),
-            ))?;
+    pub async fn solana_finalize_transfer(
+        &self,
+        transaction_hash: CryptoHash,
+        solana_token: Pubkey, // TODO: retrieve from near contract
+        sender_id: Option<AccountId>,
+    ) -> Result<Signature> {
+        let solana_bridge_client = self.solana_bridge_client()?;
+        let near_bridge_client = self.near_bridge_client()?;
 
-        let eth_chain_id = self
-            .eth_chain_id
-            .as_ref()
-            .ok_or(BridgeSdkError::ConfigError(
-                "Ethereum chain id is not set".to_string(),
-            ))?;
+        let transfer_log = near_bridge_client
+            .extract_transfer_log(transaction_hash, sender_id, "SignTransferEvent")
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
 
-        let private_key_bytes = hex::decode(eth_private_key).map_err(|_| {
-            BridgeSdkError::ConfigError(
-                "Ethereum private key is not a valid hex string".to_string(),
-            )
-        })?;
+        let Nep141LockerEvent::SignTransferEvent {
+            message_payload,
+            signature,
+        } = serde_json::from_str(&transfer_log)?
+        else {
+            return Err(BridgeSdkError::UnknownError);
+        };
 
-        if private_key_bytes.len() != 32 {
-            return Err(BridgeSdkError::ConfigError(
-                "Ethereum private key is of invalid length".to_string(),
-            ));
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27;
+
+        let payload = FinalizeDepositData {
+            payload: DepositPayload {
+                destination_nonce: message_payload.destination_nonce,
+                transfer_id: TransferId {
+                    origin_chain: 1,
+                    origin_nonce: message_payload.transfer_id.origin_nonce,
+                },
+                token: "wrap.testnet".to_string(),
+                amount: message_payload.amount.into(),
+                recipient: match message_payload.recipient {
+                    OmniAddress::Sol(addr) => Pubkey::new_from_array(addr.0),
+                    _ => return Err(BridgeSdkError::UnknownError),
+                },
+                fee_recipient: message_payload.fee_recipient.map(|addr| addr.to_string()),
+            },
+            signature: signature
+                .try_into()
+                .map_err(|_| BridgeSdkError::UnknownError)?,
+        };
+
+        let tx_hash = solana_bridge_client
+            .finalize_transfer(payload, solana_token)
+            .await
+            .map_err(|_| BridgeSdkError::UnknownError)?;
+
+        tracing::info!(
+            tx_hash = format!("{:?}", tx_hash),
+            "Sent finalize transfer transaction"
+        );
+
+        Ok(tx_hash)
+    }
+
+    pub async fn log_metadata(&self, log_metadata_args: LogMetadataArgs) -> Result<String> {
+        match log_metadata_args {
+            LogMetadataArgs::NearLogMetadata { token: token_id } => self
+                .near_log_metadata(token_id)
+                .await
+                .map(|hash| hash.to_string()),
+            LogMetadataArgs::SolanaLogMetadata { token } => self
+                .solana_log_metadata(token)
+                .await
+                .map(|hash| hash.to_string()),
         }
+    }
 
-        Ok(LocalWallet::from_bytes(&private_key_bytes)
-            .map_err(|_| BridgeSdkError::ConfigError("Invalid ethereum private key".to_string()))?
-            .with_chain_id(*eth_chain_id))
+    pub async fn deploy_token(&self, deploy_token_args: DeployTokenArgs) -> Result<String> {
+        match deploy_token_args {
+            DeployTokenArgs::NearDeployToken { chain_kind, vaa } => self
+                .near_deploy_token_with_vaa_proof(chain_kind, vaa)
+                .await
+                .map(|hash| hash.to_string()),
+            DeployTokenArgs::EvmDeployToken { chain_kind, event } => self
+                .evm_deploy_token(chain_kind, event)
+                .await
+                .map(|hash| hash.to_string()),
+            DeployTokenArgs::EvmDeployTokenWithTxHash {
+                chain_kind,
+                near_tx_hash,
+            } => self
+                .evm_deploy_token_with_tx_hash(chain_kind, near_tx_hash)
+                .await
+                .map(|hash| hash.to_string()),
+            DeployTokenArgs::SolanaDeployToken { tx_hash, sender_id } => self
+                .solana_deploy_token(tx_hash, sender_id)
+                .await
+                .map(|hash| hash.to_string()),
+        }
+    }
+
+    pub async fn bind_token(&self, bind_token_args: BindTokenArgs) -> Result<String> {
+        match bind_token_args {
+            BindTokenArgs::EvmBindToken {
+                chain_kind,
+                tx_hash,
+            } => self
+                .near_bind_token_with_evm_proof(chain_kind, tx_hash)
+                .await
+                .map(|hash| hash.to_string()),
+            BindTokenArgs::WormholeBindToken { bind_token_args } => self
+                .near_bind_token(bind_token_args)
+                .await
+                .map(|hash| hash.to_string()),
+        }
+    }
+
+    pub async fn init_transfer(&self, init_transfer_args: InitTransferArgs) -> Result<String> {
+        match init_transfer_args {
+            InitTransferArgs::NearInitTransfer {
+                token: near_token_id,
+                amount,
+                receiver,
+            } => self
+                .near_init_transfer(near_token_id, amount, receiver)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+            InitTransferArgs::EvmInitTransfer {
+                chain_kind,
+                token: near_token_id,
+                amount,
+                receiver,
+                fee,
+            } => self
+                .evm_init_transfer(chain_kind, near_token_id, amount, receiver, fee)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+            InitTransferArgs::SolanaInitTransfer {
+                token,
+                amount,
+                recipient,
+            } => self
+                .solana_init_transfer(token, amount, recipient)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+            InitTransferArgs::SolanaInitTransferSol { amount, recipient } => self
+                .solana_init_transfer_sol(amount, recipient)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+        }
+    }
+
+    pub async fn fin_transfer(&self, fin_transfer_args: FinTransferArgs) -> Result<String> {
+        match fin_transfer_args {
+            FinTransferArgs::NearFinTransfer {
+                chain_kind,
+                storage_deposit_actions,
+                prover_args,
+            } => self
+                .near_fin_transfer(chain_kind, storage_deposit_actions, prover_args)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+            FinTransferArgs::EvmFinTransfer { chain_kind, event } => self
+                .evm_fin_transfer(chain_kind, event)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+            FinTransferArgs::EvmFinTransferWithTxHash {
+                chain_kind,
+                near_tx_hash,
+            } => self
+                .evm_fin_transfer_with_tx_hash(chain_kind, near_tx_hash)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+            FinTransferArgs::SolanaFinTransfer {
+                tx_hash,
+                sender_id,
+                solana_token,
+            } => self
+                .solana_finalize_transfer(tx_hash, solana_token, sender_id)
+                .await
+                .map(|tx_hash| tx_hash.to_string()),
+        }
+    }
+
+    pub async fn wormhole_get_vaa<E>(
+        &self,
+        chain_id: u64,
+        emitter: E,
+        sequence: u64,
+    ) -> Result<String>
+    where
+        E: std::fmt::Display + Send,
+    {
+        let wormhole_bridge_client = self.wormhole_bridge_client()?;
+        wormhole_bridge_client
+            .get_vaa(chain_id, emitter, sequence)
+            .await
+    }
+
+    pub fn near_bridge_client(&self) -> Result<&NearBridgeClient> {
+        self.near_bridge_client
+            .as_ref()
+            .ok_or(BridgeSdkError::ConfigError(
+                "NEAR bridge client not configured".to_string(),
+            ))
+    }
+
+    pub fn evm_bridge_client(&self, chain_kind: ChainKind) -> Result<&EvmBridgeClient> {
+        let bridge_client = match chain_kind {
+            ChainKind::Base => self.base_bridge_client.as_ref(),
+            ChainKind::Arb => self.arb_bridge_client.as_ref(),
+            ChainKind::Eth => self.eth_bridge_client.as_ref(),
+            _ => unreachable!("Unsupported chain kind"),
+        };
+
+        bridge_client.ok_or(BridgeSdkError::ConfigError(
+            "EVM bridge client not configured".to_string(),
+        ))
+    }
+
+    pub fn solana_bridge_client(&self) -> Result<&SolanaBridgeClient> {
+        self.solana_bridge_client
+            .as_ref()
+            .ok_or(BridgeSdkError::ConfigError(
+                "SOLANA bridge client not configured".to_string(),
+            ))
+    }
+
+    pub fn wormhole_bridge_client(&self) -> Result<&WormholeBridgeClient> {
+        self.wormhole_bridge_client
+            .as_ref()
+            .ok_or(BridgeSdkError::ConfigError(
+                "Wormhole bridge client not configured".to_string(),
+            ))
     }
 }

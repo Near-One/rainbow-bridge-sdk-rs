@@ -15,6 +15,29 @@ use omni_types::{
 use serde_json::json;
 use std::str::FromStr;
 
+const STORAGE_DEPOSIT_GAS: u64 = 10_000_000_000_000;
+
+const LOG_METADATA_GAS: u64 = 300_000_000_000_000;
+const LOG_METADATA_DEPOSIT: u128 = 200_000_000_000_000_000_000_000;
+
+const DEPLOY_TOKEN_WITH_VAA_GAS: u64 = 120_000_000_000_000;
+const DEPLOY_TOKEN_WITH_VAA_DEPOSIT: u128 = 4_000_000_000_000_000_000_000_000;
+
+const BIND_TOKEN_GAS: u64 = 300_000_000_000_000;
+const BIND_TOKEN_DEPOSIT: u128 = 200_000_000_000_000_000_000_000;
+
+const SIGN_TRANSFER_GAS: u64 = 300_000_000_000_000;
+const SIGN_TRANSFER_DEPOSIT: u128 = 500_000_000_000_000_000_000_000;
+
+const INIT_TRANSFER_GAS: u64 = 300_000_000_000_000;
+const INIT_TRANSFER_DEPOSIT: u128 = 1;
+
+const FIN_TRANSFER_GAS: u64 = 300_000_000_000_000;
+const FIN_TRANSFER_DEPOSIT: u128 = 60_000_000_000_000_000_000_000;
+
+const CLAIM_FEE_GAS: u64 = 300_000_000_000_000;
+const CLAIM_FEE_DEPOSIT: u128 = 200_000_000_000_000_000_000_000;
+
 /// Bridging NEAR-originated NEP-141 tokens
 #[derive(Builder, Default, Clone)]
 pub struct NearBridgeClient {
@@ -146,7 +169,7 @@ impl NearBridgeClient {
             })
             .to_string()
             .into_bytes(),
-            10_000_000_000_000,
+            STORAGE_DEPOSIT_GAS,
             amount,
         )
         .await?;
@@ -173,7 +196,7 @@ impl NearBridgeClient {
             })
             .to_string()
             .into_bytes(),
-            10_000_000_000_000,
+            STORAGE_DEPOSIT_GAS,
             amount,
         )
         .await?;
@@ -205,8 +228,8 @@ impl NearBridgeClient {
             })
             .to_string()
             .into_bytes(),
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
+            LOG_METADATA_GAS,
+            LOG_METADATA_DEPOSIT,
         )
         .await?;
 
@@ -240,8 +263,8 @@ impl NearBridgeClient {
             token_locker_id.to_string(),
             "deploy_token".to_string(),
             borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            120_000_000_000_000,
-            4_000_000_000_000_000_000_000_000,
+            DEPLOY_TOKEN_WITH_VAA_GAS,
+            DEPLOY_TOKEN_WITH_VAA_DEPOSIT,
         )
         .await?;
 
@@ -265,8 +288,8 @@ impl NearBridgeClient {
             token_locker_id.to_string(),
             "bind_token".to_string(),
             borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
+            BIND_TOKEN_GAS,
+            BIND_TOKEN_DEPOSIT,
         )
         .await?;
 
@@ -303,8 +326,8 @@ impl NearBridgeClient {
             })
             .to_string()
             .into_bytes(),
-            300_000_000_000_000,
-            500_000_000_000_000_000_000_000,
+            SIGN_TRANSFER_GAS,
+            SIGN_TRANSFER_DEPOSIT, // TODO: make a contract call to signer account to determine the required deposit
         )
         .await?;
 
@@ -381,8 +404,8 @@ impl NearBridgeClient {
             })
             .to_string()
             .into_bytes(),
-            300_000_000_000_000,
-            1,
+            INIT_TRANSFER_GAS,
+            INIT_TRANSFER_DEPOSIT,
         )
         .await?;
 
@@ -405,8 +428,8 @@ impl NearBridgeClient {
             self.token_locker_id_as_str()?.to_string(),
             "fin_transfer".to_string(),
             borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            300_000_000_000_000,
-            60_000_000_000_000_000_000_000,
+            FIN_TRANSFER_GAS,
+            FIN_TRANSFER_DEPOSIT,
         )
         .await?;
 
@@ -430,8 +453,8 @@ impl NearBridgeClient {
             token_locker_id.to_string(),
             "claim_fee".to_string(),
             borsh::to_vec(&args).map_err(|_| BridgeSdkError::UnknownError)?,
-            300_000_000_000_000,
-            200_000_000_000_000_000_000_000,
+            CLAIM_FEE_GAS,
+            CLAIM_FEE_DEPOSIT,
         )
         .await?;
 

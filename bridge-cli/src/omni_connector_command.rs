@@ -360,8 +360,8 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
-                .deploy_token(DeployTokenArgs::SolanaDeployToken {
-                    tx_hash: transaction_hash.parse().unwrap(),
+                .deploy_token(DeployTokenArgs::SolanaDeployTokenWithTxHash {
+                    near_tx_hash: transaction_hash.parse().unwrap(),
                     sender_id: sender_id.map(|id| id.parse().unwrap()),
                 })
                 .await
@@ -399,8 +399,8 @@ pub async fn match_subcommand(cmd: OmniConnectorSubCommand, network: Network) {
             config_cli,
         } => {
             omni_connector(network, config_cli)
-                .fin_transfer(FinTransferArgs::SolanaFinTransfer {
-                    tx_hash: transaction_hash.parse().unwrap(),
+                .fin_transfer(FinTransferArgs::SolanaFinTransferWithTxHash {
+                    near_tx_hash: transaction_hash.parse().unwrap(),
                     solana_token: solana_token.parse().unwrap(),
                     sender_id: sender_id.map(|id| id.parse().unwrap()),
                 })

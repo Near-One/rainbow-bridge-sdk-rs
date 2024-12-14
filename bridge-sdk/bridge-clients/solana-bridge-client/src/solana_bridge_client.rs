@@ -1,6 +1,7 @@
 use crate::{error::SolanaClientError, instructions::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_builder::Builder;
+use omni_types::{near_events::Nep141LockerEvent, OmniAddress};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -218,6 +219,36 @@ impl SolanaBridgeClient {
 
         self.send_and_confirm_transaction(vec![instruction], &[keypair, &wormhole_message])
             .await
+    }
+
+    pub async fn deploy_token_with_event(
+        &self,
+        event: Nep141LockerEvent,
+    ) -> Result<Signature, SolanaClientError> {
+        let Nep141LockerEvent::LogMetadataEvent {
+            signature,
+            metadata_payload,
+        } = event
+        else {
+            return Err(SolanaClientError::InvalidEvent);
+        };
+
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27; // TODO: Remove recovery_id modification in OmniTypes and add it specifically when submitting to EVM chains
+
+        let payload = DeployTokenData {
+            metadata: MetadataPayload {
+                token: metadata_payload.token,
+                name: metadata_payload.name,
+                symbol: metadata_payload.symbol,
+                decimals: metadata_payload.decimals,
+            },
+            signature: signature.try_into().map_err(|_| {
+                SolanaClientError::ConfigError("Failed to parse signature".to_string())
+            })?,
+        };
+
+        self.deploy_token(payload).await
     }
 
     pub async fn init_transfer(
@@ -475,6 +506,49 @@ impl SolanaBridgeClient {
 
         self.send_and_confirm_transaction(vec![instruction], &[keypair, &wormhole_message])
             .await
+    }
+
+    pub async fn finalize_transfer_with_event(
+        &self,
+        event: Nep141LockerEvent,
+        solana_token: Pubkey, // TODO: retrieve from near contract
+    ) -> Result<Signature, SolanaClientError> {
+        let Nep141LockerEvent::SignTransferEvent {
+            message_payload,
+            signature,
+        } = event
+        else {
+            return Err(SolanaClientError::InvalidEvent);
+        };
+
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27;
+
+        let payload = FinalizeDepositData {
+            payload: DepositPayload {
+                destination_nonce: message_payload.destination_nonce,
+                transfer_id: TransferId {
+                    origin_chain: 1,
+                    origin_nonce: message_payload.transfer_id.origin_nonce,
+                },
+                token: "wrap.testnet".to_string(),
+                amount: message_payload.amount.into(),
+                recipient: match message_payload.recipient {
+                    OmniAddress::Sol(addr) => Pubkey::new_from_array(addr.0),
+                    _ => {
+                        return Err(SolanaClientError::ConfigError(
+                            "Invalid recipient".to_string(),
+                        ))
+                    }
+                },
+                fee_recipient: message_payload.fee_recipient.map(|addr| addr.to_string()),
+            },
+            signature: signature.try_into().map_err(|_| {
+                SolanaClientError::ConfigError("Failed to parse signature".to_string())
+            })?,
+        };
+
+        self.finalize_transfer(payload, solana_token).await
     }
 
     async fn get_wormhole_accounts(&self) -> Result<(Pubkey, Pubkey, Pubkey), SolanaClientError> {

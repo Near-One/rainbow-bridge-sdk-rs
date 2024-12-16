@@ -1,19 +1,16 @@
+use std::str::FromStr;
+
 use bridge_connector_common::result::{BridgeSdkError, Result};
 use derive_builder::Builder;
 use near_contract_standards::storage_management::StorageBalance;
 use near_crypto::SecretKey;
-use near_primitives::{
-    hash::CryptoHash,
-    types::AccountId,
-    views::{FinalExecutionOutcomeView, FinalExecutionStatus},
-};
+use near_primitives::{hash::CryptoHash, types::AccountId};
 use near_token::NearToken;
 use omni_types::{
     locker_args::{BindTokenArgs, ClaimFeeArgs, DeployTokenArgs, FinTransferArgs},
     ChainKind, Fee, OmniAddress,
 };
 use serde_json::json;
-use std::str::FromStr;
 
 const STORAGE_DEPOSIT_GAS: u64 = 10_000_000_000_000;
 
@@ -182,11 +179,11 @@ impl NearBridgeClient {
         Ok(tx_hash)
     }
 
-    pub async fn storage_deposit(&self, amount: u128) -> Result<()> {
+    pub async fn storage_deposit(&self, amount: u128) -> Result<CryptoHash> {
         let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
-        let tx = near_rpc_client::change_and_wait_for_outcome(
+        let tx_hash = near_rpc_client::change(
             endpoint,
             self.signer()?,
             token_locker_id.to_string(),
@@ -201,16 +198,12 @@ impl NearBridgeClient {
         )
         .await?;
 
-        if let FinalExecutionStatus::Failure(_) = tx.status {
-            return Err(BridgeSdkError::UnknownError);
-        }
-
         tracing::info!(
-            tx_hash = format!("{:?}", tx.transaction.hash),
+            tx_hash = format!("{:?}", tx_hash.to_string()),
             "Sent storage deposit transaction"
         );
 
-        Ok(())
+        Ok(tx_hash)
     }
 
     /// Logs token metadata to token_locker contract. The proof from this transaction is then used to deploy a corresponding token on other chains
@@ -308,10 +301,10 @@ impl NearBridgeClient {
         origin_nonce: u64,
         fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
-    ) -> Result<FinalExecutionOutcomeView> {
+    ) -> Result<CryptoHash> {
         let endpoint = self.endpoint()?;
 
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
+        let tx_hash = near_rpc_client::change(
             endpoint,
             self.signer()?,
             self.token_locker_id_as_str()?.to_string(),
@@ -332,11 +325,11 @@ impl NearBridgeClient {
         .await?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
+            tx_hash = format!("{:?}", tx_hash.to_string()),
             "Sent sign transfer transaction"
         );
 
-        Ok(outcome)
+        Ok(tx_hash)
     }
 
     /// Gets the required balance for the init transfer
@@ -443,11 +436,11 @@ impl NearBridgeClient {
 
     /// Claims fee on NEAR chain using the token locker
     #[tracing::instrument(skip_all, name = "CLAIM FEE")]
-    pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<FinalExecutionOutcomeView> {
+    pub async fn claim_fee(&self, args: ClaimFeeArgs) -> Result<CryptoHash> {
         let endpoint = self.endpoint()?;
         let token_locker_id = self.token_locker_id_as_str()?;
 
-        let outcome = near_rpc_client::change_and_wait_for_outcome(
+        let tx_hash = near_rpc_client::change(
             endpoint,
             self.signer()?,
             token_locker_id.to_string(),
@@ -459,11 +452,11 @@ impl NearBridgeClient {
         .await?;
 
         tracing::info!(
-            tx_hash = format!("{:?}", outcome.transaction.hash),
+            tx_hash = format!("{:?}", tx_hash.to_string()),
             "Sent claim fee request"
         );
 
-        Ok(outcome)
+        Ok(tx_hash)
     }
 
     pub async fn extract_transfer_log(

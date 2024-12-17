@@ -280,8 +280,10 @@ impl SolanaBridgeClient {
             self.get_wormhole_accounts().await?;
         let wormhole_message = Keypair::new();
 
-        let token_owner = self.get_token_owner(token).await?;
-        let is_solana_native = token_owner.is_some() && token_owner.unwrap() == authority;
+        let is_solana_native = match self.get_token_owner(token).await? {
+            COption::Some(owner) => owner == authority,
+            COption::None => false,
+        };
 
         let instruction_data = InitTransfer {
             amount,

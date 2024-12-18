@@ -5,12 +5,15 @@ use omni_types::{near_events::Nep141LockerEvent, OmniAddress};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
+    program_option::COption,
+    program_pack::Pack,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
     system_program, sysvar,
     transaction::Transaction,
 };
+use spl_token::state::Mint;
 
 mod error;
 mod instructions;
@@ -39,7 +42,6 @@ pub struct TransferId {
 pub struct DepositPayload {
     pub destination_nonce: u64,
     pub transfer_id: TransferId,
-    pub token: String,
     pub amount: u128,
     pub recipient: Pubkey,
     pub fee_recipient: Option<String>,
@@ -273,11 +275,15 @@ impl SolanaBridgeClient {
             ],
             &spl_associated_token_account::ID,
         );
-        let (vault, _) = Pubkey::find_program_address(&[b"vault", token.as_ref()], program_id);
 
         let (wormhole_bridge, wormhole_fee_collector, wormhole_sequence) =
             self.get_wormhole_accounts().await?;
         let wormhole_message = Keypair::new();
+
+        let is_bridged_token = match self.get_token_owner(token).await? {
+            COption::Some(owner) => owner == authority,
+            COption::None => false,
+        };
 
         let instruction_data = InitTransfer {
             amount,
@@ -293,7 +299,13 @@ impl SolanaBridgeClient {
                 AccountMeta::new_readonly(authority, false),
                 AccountMeta::new(token, false),
                 AccountMeta::new(from_token_account, false),
-                AccountMeta::new(vault, false), // Optional
+                if is_bridged_token {
+                    AccountMeta::new(*program_id, false) // Vault is not present for non-native tokens
+                } else {
+                    let (vault, _) =
+                        Pubkey::find_program_address(&[b"vault", token.as_ref()], program_id);
+                    AccountMeta::new(vault, false)
+                },
                 AccountMeta::new(sol_vault, false),
                 AccountMeta::new(keypair.pubkey(), true),
                 AccountMeta::new_readonly(config, false),
@@ -395,9 +407,6 @@ impl SolanaBridgeClient {
             &spl_associated_token_account::ID,
         );
 
-        let (vault, _) =
-            Pubkey::find_program_address(&[b"vault", solana_token.as_ref()], program_id);
-
         let (wormhole_bridge, wormhole_fee_collector, wormhole_sequence) =
             self.get_wormhole_accounts().await?;
         let wormhole_message = Keypair::new();
@@ -412,6 +421,11 @@ impl SolanaBridgeClient {
             signature: data.signature,
         };
 
+        let is_bridged_token = match self.get_token_owner(solana_token).await? {
+            COption::Some(owner) => owner == authority,
+            COption::None => false,
+        };
+
         let instruction = Instruction::new_with_borsh(
             *program_id,
             &instruction_data,
@@ -421,7 +435,15 @@ impl SolanaBridgeClient {
                 AccountMeta::new(authority, false),
                 AccountMeta::new_readonly(recipient, false),
                 AccountMeta::new(solana_token, false),
-                AccountMeta::new(vault, false), // Optional vault
+                if is_bridged_token {
+                    AccountMeta::new(*program_id, false) // Vault is not present for non-native tokens
+                } else {
+                    let (vault, _) = Pubkey::find_program_address(
+                        &[b"vault", solana_token.as_ref()],
+                        program_id,
+                    );
+                    AccountMeta::new(vault, false)
+                },
                 AccountMeta::new(token_account, false),
                 AccountMeta::new_readonly(config, false),
                 AccountMeta::new(wormhole_bridge, false),
@@ -531,7 +553,6 @@ impl SolanaBridgeClient {
                     origin_chain: 1,
                     origin_nonce: message_payload.transfer_id.origin_nonce,
                 },
-                token: "wrap.testnet".to_string(),
                 amount: message_payload.amount.into(),
                 recipient: match message_payload.recipient {
                     OmniAddress::Sol(addr) => Pubkey::new_from_array(addr.0),
@@ -583,6 +604,17 @@ impl SolanaBridgeClient {
 
         let signature = client.send_and_confirm_transaction(&transaction).await?;
         Ok(signature)
+    }
+
+    async fn get_token_owner(&self, token: Pubkey) -> Result<COption<Pubkey>, SolanaClientError> {
+        let client = self.client()?;
+
+        let mint_account = client.get_account(&token).await?;
+
+        let mint_data = Mint::unpack(&mint_account.data)
+            .map_err(|e| SolanaClientError::InvalidAccountData(e.to_string()))?;
+
+        Ok(mint_data.mint_authority)
     }
 
     pub fn client(&self) -> Result<&RpcClient, SolanaClientError> {

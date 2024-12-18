@@ -77,7 +77,7 @@ impl NearBridgeClient {
             token_id,
             "get_native_token_id".to_string(),
             serde_json::json!({
-                "origin_chain": origin_chain
+                "chain": origin_chain
             }),
         )
         .await?;

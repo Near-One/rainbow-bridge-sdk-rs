@@ -424,6 +424,11 @@ impl SolanaBridgeClient {
             signature: data.signature,
         };
 
+        let is_bridged_token = match self.get_token_owner(solana_token).await? {
+            COption::Some(owner) => owner == authority,
+            COption::None => false,
+        };
+
         let instruction = Instruction::new_with_borsh(
             *program_id,
             &instruction_data,
@@ -433,7 +438,15 @@ impl SolanaBridgeClient {
                 AccountMeta::new(authority, false),
                 AccountMeta::new_readonly(recipient, false),
                 AccountMeta::new(solana_token, false),
-                AccountMeta::new(vault, false), // Optional vault
+                if is_bridged_token {
+                    AccountMeta::new(*program_id, false) // Vault is not present for non-native tokens
+                } else {
+                    let (vault, _) = Pubkey::find_program_address(
+                        &[b"vault", solana_token.as_ref()],
+                        program_id,
+                    );
+                    AccountMeta::new(vault, false)
+                },
                 AccountMeta::new(token_account, false),
                 AccountMeta::new_readonly(config, false),
                 AccountMeta::new(wormhole_bridge, false),

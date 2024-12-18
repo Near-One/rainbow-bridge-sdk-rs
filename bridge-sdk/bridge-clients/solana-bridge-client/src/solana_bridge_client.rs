@@ -280,7 +280,7 @@ impl SolanaBridgeClient {
             self.get_wormhole_accounts().await?;
         let wormhole_message = Keypair::new();
 
-        let is_solana_native = match self.get_token_owner(token).await? {
+        let is_bridged_token = match self.get_token_owner(token).await? {
             COption::Some(owner) => owner == authority,
             COption::None => false,
         };
@@ -299,12 +299,12 @@ impl SolanaBridgeClient {
                 AccountMeta::new_readonly(authority, false),
                 AccountMeta::new(token, false),
                 AccountMeta::new(from_token_account, false),
-                if is_solana_native {
+                if is_bridged_token {
+                    AccountMeta::new(*program_id, false) // Vault is not present for non-native tokens
+                } else {
                     let (vault, _) =
                         Pubkey::find_program_address(&[b"vault", token.as_ref()], program_id);
                     AccountMeta::new(vault, false)
-                } else {
-                    AccountMeta::new(*program_id, false) // Vault is not present for non-native tokens
                 },
                 AccountMeta::new(sol_vault, false),
                 AccountMeta::new(keypair.pubkey(), true),

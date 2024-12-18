@@ -35,6 +35,11 @@ const FIN_TRANSFER_DEPOSIT: u128 = 60_000_000_000_000_000_000_000;
 const CLAIM_FEE_GAS: u64 = 300_000_000_000_000;
 const CLAIM_FEE_DEPOSIT: u128 = 200_000_000_000_000_000_000_000;
 
+#[derive(serde::Deserialize)]
+struct StorageBalanceBounds {
+    min: NearToken,
+}
+
 /// Bridging NEAR-originated NEP-141 tokens
 #[derive(Builder, Default, Clone)]
 pub struct NearBridgeClient {
@@ -132,16 +137,17 @@ impl NearBridgeClient {
         let response = near_rpc_client::view(
             endpoint,
             token_id.clone(),
-            "storage_minimum_balance".to_string(),
+            "storage_balance_bounds".to_string(),
             serde_json::Value::Null,
         )
         .await?;
 
-        let storage_minimum_balance = serde_json::from_slice::<NearToken>(&response)?;
+        let storage_balance_bounds = serde_json::from_slice::<StorageBalanceBounds>(&response)?;
 
         let total_balance = NearToken::from_yoctonear(self.get_storage_balance(account_id).await?);
 
-        Ok(storage_minimum_balance
+        Ok(storage_balance_bounds
+            .min
             .saturating_sub(total_balance)
             .as_yoctonear())
     }

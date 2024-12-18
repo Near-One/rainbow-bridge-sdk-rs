@@ -407,9 +407,6 @@ impl SolanaBridgeClient {
             &spl_associated_token_account::ID,
         );
 
-        let (vault, _) =
-            Pubkey::find_program_address(&[b"vault", solana_token.as_ref()], program_id);
-
         let (wormhole_bridge, wormhole_fee_collector, wormhole_sequence) =
             self.get_wormhole_accounts().await?;
         let wormhole_message = Keypair::new();

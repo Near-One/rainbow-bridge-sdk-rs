@@ -4352,6 +4352,7 @@ dependencies = [
  "near-rpc-client",
  "near-token",
  "omni-types",
+ "serde",
  "serde_json",
  "tracing",
 ]

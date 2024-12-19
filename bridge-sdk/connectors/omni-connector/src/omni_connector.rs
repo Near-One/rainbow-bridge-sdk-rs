@@ -13,7 +13,10 @@ use omni_types::{Fee, OmniAddress};
 
 use evm_bridge_client::EvmBridgeClient;
 use near_bridge_client::NearBridgeClient;
-use solana_bridge_client::SolanaBridgeClient;
+use solana_bridge_client::{
+    DeployTokenData, DepositPayload, FinalizeDepositData, MetadataPayload, SolanaBridgeClient,
+    TransferId,
+};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use wormhole_bridge_client::WormholeBridgeClient;
@@ -363,20 +366,52 @@ impl OmniConnector {
         near_tx_hash: CryptoHash,
         sender_id: Option<AccountId>,
     ) -> Result<Signature> {
-        let solsana_bridge_client = self.solana_bridge_client()?;
         let near_bridge_client = self.near_bridge_client()?;
 
         let transfer_log = near_bridge_client
             .extract_transfer_log(near_tx_hash, sender_id, "LogMetadataEvent")
-            .await
-            .map_err(|_| BridgeSdkError::UnknownError)?;
+            .await?;
 
-        solsana_bridge_client
-            .deploy_token_with_event(
-                serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-            )
+        self.solana_deploy_token_with_event(
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+        )
+        .await
+        // TODO: This will silence a real error, so it must be fixed during `BridgeSdkError` refactoring
+        .map_err(|_| BridgeSdkError::UnknownError)
+    }
+
+    pub async fn solana_deploy_token_with_event(
+        &self,
+        event: Nep141LockerEvent,
+    ) -> Result<Signature> {
+        let Nep141LockerEvent::LogMetadataEvent {
+            signature,
+            metadata_payload,
+        } = event
+        else {
+            return Err(BridgeSdkError::UnknownError);
+        };
+
+        let solana_bridge_client = self.solana_bridge_client()?;
+
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27; // TODO: Remove recovery_id modification in OmniTypes and add it specifically when submitting to EVM chains
+
+        let payload = DeployTokenData {
+            metadata: MetadataPayload {
+                token: metadata_payload.token,
+                name: metadata_payload.name,
+                symbol: metadata_payload.symbol,
+                decimals: metadata_payload.decimals,
+            },
+            signature: signature.try_into().map_err(|_| {
+                BridgeSdkError::ConfigError("Failed to parse signature".to_string())
+            })?,
+        };
+
+        solana_bridge_client
+            .deploy_token(payload)
             .await
-            // TODO: This will silence a real error, so it must be fixed during `BridgeSdkError` refactoring
             .map_err(|_| BridgeSdkError::UnknownError)
     }
 
@@ -427,7 +462,6 @@ impl OmniConnector {
         sender_id: Option<AccountId>,
         solana_token: Pubkey, // TODO: retrieve from near contract
     ) -> Result<Signature> {
-        let solana_bridge_client = self.solana_bridge_client()?;
         let near_bridge_client = self.near_bridge_client()?;
 
         let transfer_log = near_bridge_client
@@ -435,13 +469,55 @@ impl OmniConnector {
             .await
             .map_err(|_| BridgeSdkError::UnknownError)?;
 
+        self.solana_finalize_transfer_with_event(
+            serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
+            solana_token,
+        )
+        .await
+        // TODO: This will silence a real error, so it must be fixed during `BridgeSdkError` refactoring
+        .map_err(|_| BridgeSdkError::UnknownError)
+    }
+
+    pub async fn solana_finalize_transfer_with_event(
+        &self,
+        event: Nep141LockerEvent,
+        solana_token: Pubkey, // TODO: retrieve from near contract
+    ) -> Result<Signature> {
+        let Nep141LockerEvent::SignTransferEvent {
+            message_payload,
+            signature,
+        } = event
+        else {
+            return Err(BridgeSdkError::UnknownError);
+        };
+
+        let solana_bridge_client = self.solana_bridge_client()?;
+
+        let mut signature = signature.to_bytes();
+        signature[64] -= 27;
+
+        let payload = FinalizeDepositData {
+            payload: DepositPayload {
+                destination_nonce: message_payload.destination_nonce,
+                transfer_id: TransferId {
+                    origin_chain: 1,
+                    origin_nonce: message_payload.transfer_id.origin_nonce,
+                },
+                amount: message_payload.amount.into(),
+                recipient: match message_payload.recipient {
+                    OmniAddress::Sol(addr) => Pubkey::new_from_array(addr.0),
+                    _ => return Err(BridgeSdkError::ConfigError("Invalid recipient".to_string())),
+                },
+                fee_recipient: message_payload.fee_recipient.map(|addr| addr.to_string()),
+            },
+            signature: signature.try_into().map_err(|_| {
+                BridgeSdkError::ConfigError("Failed to parse signature".to_string())
+            })?,
+        };
+
         solana_bridge_client
-            .finalize_transfer_with_event(
-                serde_json::from_str(&transfer_log).map_err(|_| BridgeSdkError::UnknownError)?,
-                solana_token,
-            )
+            .finalize_transfer(payload, solana_token)
             .await
-            // TODO: This will silence a real error, so it must be fixed during `BridgeSdkError` refactoring
             .map_err(|_| BridgeSdkError::UnknownError)
     }
 
@@ -476,8 +552,7 @@ impl OmniConnector {
                 .await
                 .map(|hash| hash.to_string()),
             DeployTokenArgs::SolanaDeployToken { event } => self
-                .solana_bridge_client()?
-                .deploy_token_with_event(event)
+                .solana_deploy_token_with_event(event)
                 .await
                 .map(|hash| hash.to_string())
                 .map_err(|_| BridgeSdkError::UnknownError),
@@ -567,11 +642,9 @@ impl OmniConnector {
                 event,
                 solana_token,
             } => self
-                .solana_bridge_client()?
-                .finalize_transfer_with_event(event, solana_token)
+                .solana_finalize_transfer_with_event(event, solana_token)
                 .await
-                .map(|tx_hash| tx_hash.to_string())
-                .map_err(|_| BridgeSdkError::UnknownError),
+                .map(|tx_hash| tx_hash.to_string()),
             FinTransferArgs::SolanaFinTransferWithTxHash {
                 near_tx_hash,
                 sender_id,

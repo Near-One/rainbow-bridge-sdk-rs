@@ -92,13 +92,16 @@ impl NearBridgeClient {
         Ok(token_id)
     }
 
-    pub async fn get_storage_balance(&self, account_id: AccountId) -> Result<u128> {
+    pub async fn get_storage_balance(
+        &self,
+        token_id: AccountId,
+        account_id: AccountId,
+    ) -> Result<u128> {
         let endpoint = self.endpoint()?;
-        let token_locker_id = self.token_locker_id_as_account_id()?;
 
         let response = near_rpc_client::view(
             endpoint,
-            token_locker_id,
+            token_id,
             "storage_balance_of".to_string(),
             serde_json::json!({
                 "account_id": account_id
@@ -144,7 +147,8 @@ impl NearBridgeClient {
 
         let storage_balance_bounds = serde_json::from_slice::<StorageBalanceBounds>(&response)?;
 
-        let total_balance = NearToken::from_yoctonear(self.get_storage_balance(account_id).await?);
+        let total_balance =
+            NearToken::from_yoctonear(self.get_storage_balance(token_id, account_id).await?);
 
         Ok(storage_balance_bounds
             .min
@@ -377,7 +381,9 @@ impl NearBridgeClient {
             .get_required_balance_for_init_transfer(&receiver, self.account_id()?.as_str())
             .await?
             + self.get_required_balance_for_account().await?;
-        let existing_balance = self.get_storage_balance(self.account_id()?).await?;
+        let existing_balance = self
+            .get_storage_balance(self.token_locker_id_as_account_id()?, self.account_id()?)
+            .await?;
 
         if existing_balance < required_balance {
             self.storage_deposit(required_balance - existing_balance)

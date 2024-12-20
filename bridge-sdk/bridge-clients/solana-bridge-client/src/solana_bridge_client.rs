@@ -255,11 +255,12 @@ impl SolanaBridgeClient {
             COption::None => false,
         };
 
+        // TODO: Proved fee&native fee through the arguments
         let instruction_data = InitTransfer {
             amount,
             recipient,
-            fee: 0,
-            native_fee: 1,
+            fee: 20,
+            native_fee: 10,
         };
 
         let instruction = Instruction::new_with_borsh(
@@ -463,7 +464,7 @@ impl SolanaBridgeClient {
             self.get_wormhole_accounts().await?;
         let wormhole_message = Keypair::new();
 
-        let instruction_data = FinalizeTransfer {
+        let instruction_data = FinalizeTransferSol {
             payload: FinalizeTransferInstructionPayload {
                 destination_nonce: data.payload.destination_nonce,
                 transfer_id: data.payload.transfer_id,

@@ -515,10 +515,17 @@ impl OmniConnector {
             })?,
         };
 
-        solana_bridge_client
-            .finalize_transfer(payload, solana_token)
-            .await
-            .map_err(|_| BridgeSdkError::UnknownError)
+        if solana_token == Pubkey::default() {
+            solana_bridge_client
+                .finalize_transfer_sol(payload)
+                .await
+                .map_err(|_| BridgeSdkError::UnknownError)
+        } else {
+            solana_bridge_client
+                .finalize_transfer(payload, solana_token)
+                .await
+                .map_err(|_| BridgeSdkError::UnknownError)
+        }
     }
 
     pub async fn log_metadata(&self, log_metadata_args: LogMetadataArgs) -> Result<String> {

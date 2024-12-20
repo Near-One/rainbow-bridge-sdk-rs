@@ -111,7 +111,7 @@ impl NearBridgeClient {
 
         let storage_balance: Option<StorageBalance> = serde_json::from_slice(&response)?;
 
-        storage_balance.map_or(Ok(0), |balance| Ok(balance.available.as_yoctonear()))
+        storage_balance.map_or(Ok(0), |balance| Ok(balance.total.as_yoctonear()))
     }
 
     pub async fn get_required_balance_for_account(&self) -> Result<u128> {

@@ -8,7 +8,7 @@ use near_primitives::{hash::CryptoHash, types::AccountId};
 use near_token::NearToken;
 use omni_types::{
     locker_args::{BindTokenArgs, ClaimFeeArgs, DeployTokenArgs, FinTransferArgs},
-    ChainKind, Fee, OmniAddress,
+    ChainKind, Fee, OmniAddress, TransferId,
 };
 use serde_json::json;
 
@@ -308,7 +308,7 @@ impl NearBridgeClient {
     #[tracing::instrument(skip_all, name = "SIGN TRANSFER")]
     pub async fn sign_transfer(
         &self,
-        origin_nonce: u64,
+        transfer_id: TransferId,
         fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
     ) -> Result<CryptoHash> {
@@ -320,10 +320,7 @@ impl NearBridgeClient {
             self.token_locker_id_as_str()?.to_string(),
             "sign_transfer".to_string(),
             serde_json::json!({
-                "transfer_id": {
-                "origin_chain": ChainKind::Near, // TODO: provide transfer_id instead of only nonce
-                    "origin_nonce": origin_nonce
-                },
+                "transfer_id": transfer_id,
                 "fee_recipient": fee_recipient,
                 "fee": fee,
             })

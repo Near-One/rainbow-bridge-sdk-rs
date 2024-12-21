@@ -319,7 +319,7 @@ impl SolanaBridgeClient {
             amount,
             recipient,
             fee: 0,
-            native_fee: 0,
+            native_fee: 10,
         };
 
         let instruction = Instruction::new_with_borsh(

@@ -181,13 +181,13 @@ impl OmniConnector {
 
     pub async fn near_sign_transfer(
         &self,
-        origin_nonce: u64,
+        transfer_id: omni_types::TransferId,
         fee_recipient: Option<AccountId>,
         fee: Option<Fee>,
     ) -> Result<CryptoHash> {
         let near_bridge_client = self.near_bridge_client()?;
         near_bridge_client
-            .sign_transfer(origin_nonce, fee_recipient, fee)
+            .sign_transfer(transfer_id, fee_recipient, fee)
             .await
     }
 
